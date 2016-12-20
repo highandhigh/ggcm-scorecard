@@ -1,0 +1,36 @@
+# RSO model config
+model: "rso"
+version: "0.2"
+
+config:
+  smoothing: [.4,.1]
+  rebalance: years
+  trailstop: 0.10
+  topn: 3
+  basket: [XLY, XLP, XLE, XLK, XLF, XLU, AGG, GLD, TLT, SHY]
+    
+backtest:
+  start: 2004-12-01
+  stop: 2016-09-14 # out-of-sample start
+  initeq: 1000000
+  transaction: -4.95
+  benchmark: SPY
+    
+history:
+  - sample: "2016-03-01"
+    cagr: 10.5
+    mdd: 17.5
+    sortino: 3.2
+    calmar: 9.4
+
+  - sample: "2016-04-01"
+    cagr: 9.8
+    mdd: 17.5
+    sortino: 3.0
+    calmar: 8.6
+
+  - sample: "2016-05-01"
+    cagr: 9.9
+    mdd: 17.5
+    sortino: 3.3
+    calmar: 9.5

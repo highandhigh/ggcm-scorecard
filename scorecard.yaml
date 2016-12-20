@@ -1,0 +1,32 @@
+version: 0.1
+vintage: "2016-12-01"
+refresh: "2016-12-05"
+
+table:
+  - status: activated
+    models: 
+    - id: "3ROC 13"
+      partner: "Partner 3"
+      config: "model_roc13.yaml"
+      
+    - id: "RSO 44"
+      partner: "Partner 4"
+      config: "model_rso44.yaml"
+      
+  - status: candidate
+    models:
+    - id: "3ROC 32"
+      partner: "Partner 3"
+      config: "model_roc32.yaml"
+  
+  - status: deactivated
+    models:
+    
+  - status: retired
+    models:
+
+
+
+
+
+
