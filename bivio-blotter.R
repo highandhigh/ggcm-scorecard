@@ -9,10 +9,23 @@ library(stringr)
 library(PerformanceAnalytics)
 options(stringsAsFactors=FALSE)
 options(getSymbols.auto.assign=FALSE)
+options(getSymbols.warning4.0=FALSE)
+source("prettyStats.R")
+
+# initialize blotter
+if (!exists(".blotter"))
+  .blotter <- new.env()
+init.date <- "2016-09-01"
+init.eq <- 2e5
+port.name <- "model"
+acct.name <- "ggcm"
+Sys.setenv(TZ="GMT")
+rm(list=ls(envir=.blotter),envir=.blotter)
+
 
 # t <- xmlTreeParse("clubexp.xml")
 # topXml <- xmlRoot(t)
-bivio <- "clubexp.xml"
+bivio <- "/Users/mrb/Desktop/clubexp.xml"
 if ( ! file.exists(bivio) ) 
   stop(paste("Cannot find Bivio export file",bivio))
 
@@ -128,105 +141,189 @@ ti.df <- left_join(tdf %>%
   select(-me.valuation_date,-as.id,-as.key,-ae.realm_id,-ie.acquisition_date) %>% 
   select(-ae.amount,-ae.type,-ae.tax_basis,-ae.tax_category,-ae.allocate,-ae.expense_id)
 
-# trim to start August 2016
-ti.df <- ti.df %>% 
-  filter(year(date)>2015) %>% 
-  filter(month(date)>7)
-model_tickers <- unique(ti.df$ticker_symbol)
+# trim to start September 16, 2016, fund transition buy date
+tday <- first(which(ti.df$date=="2016-09-16"))
+ti.df <- ti.df[tday:nrow(ti.df),]
 
-# fetch yahoo data, adjust it
-# return is a list of lists
-init.date <- "2016-01-01"
-init.eq <- 1e6
-port.name <- "model"
-acct.name <- "ggcm"
-Sys.setenv(TZ="GMT")
-# xtsenv <- new.env()
-for ( mt in model_tickers ) {
-  # env assignment is a list by ticker
-#  ev <- list(dx=NA)
+# trim the capital gains records, bookkeeping not related to blotter
+`%nin%` <- Negate(`%in%`) 
+ti.df <- ti.df %>% 
+  filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
+
+# remaining symbols are likely model basket elements
+transaction_tickers <- unique(ti.df$ticker_symbol)
+
+# fetch then adjust ticker historical data
+model_tickers <- c()
+for ( mt in transaction_tickers ) {
   if ( ! str_detect(mt,"[0-9]") ) {
     message(paste("Fetching",mt))
     dx <- getSymbols(mt,
-                  from=init.date,
-                 index.class=c("POSIXt","POSIXct"),
-               warnings=FALSE,
-               verbose=FALSE)
+                     from=init.date,
+                     index.class=c("POSIXt","POSIXct"),
+                     warnings=FALSE,
+                     verbose=FALSE)
     dx <- adjustOHLC(dx,use.Adjusted=TRUE)
     dx <- dx["2016-08::",]
     colnames(dx) <- gsub(paste(mt,'.',sep=''),"",colnames(dx))
     assign(mt,dx,envir=.GlobalEnv)
-#    ev <- list(dx=dx)
+    model_tickers <- c(model_tickers,mt)
   }
-  # assign(mt,ev,envir=xtsenv)
 }  
 
-# setup blotter
-symbols <- model_tickers
-if (!exists(".blotter"))
-  .blotter <- new.env()
-rm(list=ls(envir=.blotter),envir=.blotter)
-initPortf(name=port.name, symbols, initDate=init.date, currency="USD")
-initAcct(name=acct.name, portfolios=c(port.name), initDate=init.date,initEq=init.eq)
+# setup blotter account and portfolio
+initPortf(name=port.name, model_tickers, initDate=init.date, currency="USD")
+initAcct(name=acct.name, portfolios=c(port.name), initDate=init.date, initEq=init.eq)
 
-# for blotter use
-# ee <- getEndEquity(acct.name, currentDate)
-# position <- getPosQty(port.name, Symbol=symbols[1], Date=currentDate)
-# addTxn(port.name, Symbol=symbols[1],  TxnDate=currentDate, TxnPrice=closePrice, TxnQty = -unitSize , TxnFees=5, verbose=T)
-# addTxns()
-# addDiv()
-# updatePortf(ltportfolio, Dates = currentDate)
-# updateAcct(ltaccount, Dates = currentDate)
-# updateEndEq(ltaccount, Dates = currentDate)
-# plot(getAccount(ltaccount)[["TOTAL"]]$End.Eq)
-
-equity = getEndEq(ltaccount, currentDate)
-
-# transactions by ticker 
-# TODO assumes fund XTS has dates for transactions in join
-# TODO gather tickers into models, tally by model
-for (mt in model_tickers)  {
-  
-  #ev <- get(mt,envir=.GlobalEnv)
-  transactions.df <- ti.df %>% filter(ticker_symbol == mt)
-  #ev$tx <- transactions.df
-  #ev$df <- NA
-  
-  #if ( ! is.na(ev$dx[[1]]) ) {
-  #  fund.df <- data.frame(coredata(ev$dx),date=index(ev$dx))
-  #  fund.df <- left_join(fund.df,transactions.df,by="date")
-    
-    # keep active transactions
-    fund.df <- fund.df %>% 
-      filter(!is.na(ie.type))
-    
-    # compute share position, based on ie.count field
-    fund.df$ie.count[is.na(fund.df$ie.count)] <- 0
-    fund.df <- fund.df %>% 
-      mutate(Position=runSum(fund.df$ie.count,n=1,cumulative=TRUE)) %>%
-      mutate(MarketValue=Position*Close)
-    fund.df$Position[1] <- 0
-    fund.df$MarketValue[1] <- 0
-    
-    # cash value
-    # shares * close + gain
-    
-    # compute price returns
-    # requires timeSeries
-#     pr <- returns0(fund.df$Close,
-#                   method="discrete",
-#                   trim=FALSE,
-#                   na.rm=FALSE)
-#     fund.df <- bind_cols(fund.df,data.frame(PriceReturn=pr))
-    
-    # cumulative returns
-#    fund.df$CumulativeReturn <- na.fill(cumprod(1+fund.df$CashReturn),0)
-
-    # store merged df in environment list    
-    ev$df <- fund.df
-  }
-  assign(mt,ev,envir = xtsenv)  
+# setup blotter instruments
+currency("USD")
+for ( mt in model_tickers) {
+  stock(mt,currency="USD",multiplier=1)
 }
+
+# add transactions to blotter
+verbose=TRUE
+for ( i in 1:nrow(ti.df) ) {
+  ti <- ti.df[i,]
+  rv <- switch(ti$ie.type,
+               "INSTRUMENT_BUY_COMMISSION"=function(ti) {
+                 # amount is positive
+                 # paste(ti$date,"BUY COMMISSION",ti$ticker_symbol,ti$ie.amount)
+                 addTxn(Portfolio=port.name, 
+                        Symbol=ti$ticker_symbol, 
+                        TxnDate=ti$date,
+                        TxnPrice=0, 
+                        TxnQty=0, 
+                        TxnFees= -ti$ie.amount, 
+                        verbose=verbose)
+               },
+               "INSTRUMENT_BUY"=function(ti) {
+                 # count is positive, amount is positive
+                 # paste(ti$date,"BUY",ti$ie.count,ti$ticker_symbol,ti$ie.amount)
+                 count <- as.numeric(ti$ie.count)
+                 price <- ti$ie.amount / count
+                 addTxn(Portfolio=port.name, 
+                        Symbol=ti$ticker_symbol, 
+                        TxnDate=ti$date,
+                        TxnPrice=price,
+                        TxnQty=count, 
+                        TxnFees=0,
+                        verbose=verbose)
+               },
+               "INSTRUMENT_SELL"=function(ti) {
+                 # count is negative, amount is negative
+                 # paste(ti$date,"SELL",ti$ie.count,ti$ticker_symbol,ti$ie.amount)
+                 count <- as.numeric(ti$ie.count)
+                 price <- ti$ie.amount / count
+                 addTxn(Portfolio=port.name, 
+                        Symbol=ti$ticker_symbol, 
+                        TxnDate=ti$date,
+                        TxnPrice=price,
+                        TxnQty=count, 
+                        TxnFees=0,
+                        verbose=verbose)
+               },
+               "INSTRUMENT_SELL_COMMISSION_AND_FEE"=function(ti) {
+                 # amount is negative
+                 # paste(ti$date,"SELL COMMISSION",ti$ticker_symbol,ti$ie.amount)
+                 addTxn(Portfolio=port.name, 
+                        Symbol=ti$ticker_symbol, 
+                        TxnDate=ti$date,
+                        TxnPrice=0, 
+                        TxnQty=0, 
+                        TxnFees= ti$ie.amount, 
+                        verbose=verbose)
+               },
+               "INSTRUMENT_DISTRIBUTION_CASH"=function(ti) {
+                 # amount is positive
+                 # paste(ti$date,"CASH DISTRIBUTION",ti$ticker_symbol,ti$ie.amount)
+                 qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
+                 if ( qty > 0 ) {
+                 dps <- ti$ie.amount / qty
+                 addDiv(Portfolio=port.name, 
+                        Symbol=ti$ticker_symbol, 
+                        TxnDate=ti$date,
+                        DivPerShare=dps,
+                        TxnFees=0, 
+                        verbose=verbose)
+                 } else {
+                   # dividend received after having sold position
+                   addAcctTxn(acct.name,
+                              ti$date,
+                              TxnType = "Additions",                                                                      ti$ie.amount,
+                              verbose=verbose)
+                 }
+               },
+               "INSTRUMENT_DISTRIBUTION_RETURN_OF_CAPITAL"=function(ti) {
+                 # amount is negative
+                 # paste(ti$date,"CAPITAL DISTRIBITION",ti$ticker_symbol,ti$ie.amount)
+                 qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
+                 amount <- abs(ti$ie.amount)
+                 if ( qty > 0 ) {
+                   dps <- amount / qty
+                   addDiv(Portfolio=port.name, 
+                          Symbol=ti$ticker_symbol, 
+                          TxnDate=ti$date,
+                          DivPerShare=dps,
+                          TxnFees=0, 
+                          verbose=verbose)
+                 } else {
+                   # distribution received after having sold position
+                   addAcctTxn(acct.name,
+                              ti$date,
+                              TxnType = "Additions",                                                                      amount,
+                              verbose=verbose)
+                 }
+               },
+               function(ti) { message(paste("TI switch did not match",ti$ie.type)) }
+               )
+  rv(ti)
+}
+
+lastDate <- xts::last(ti.df)$date
+updatePortf(port.name)
+updateAcct(acct.name)
+updateEndEq(acct.name)
+
+# portfolio plot sanity check
+pm <- getAccount(acct.name)$portfolios$model
+plot(pm$Gross.Value)
+plot(pm$Realized.PL)
+plot(pm$Net.Trading.PL)
+plot(pm$Net.Performance)
+plot(pm$End.Eq)
+
+# account plot sanity check
+am <- getAccount(acct.name)$summary
+plot(am$Net.Performance)
+plot(am$End.Eq)
+
+# returns
+pr <- PortfReturns(acct.name,Portfolios=port.name,period="daily") # all portfolios
+ar <- AcctReturns(acct.name)
+
+# return status
+pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
+colnames(pm) <- c("Model")
+pm$Total <- rowSums(pm, na.rm=TRUE)
+pm$Cumulative <- cumprod(1+pm$Total)
+pm.epl <- dailyEqPL(port.name)
+# pm.tpl <- dailyTxnPL(port.name)
+
+# trade stats
+stats <- tradeStats(port.name)
+formatted.stats <- formatTradeStats(stats)
+textplot(t(formatted.stats))
+
+
+#> names(getAccount(acct.name)$summary)
+#[1] "Additions" "Withdrawals" "Realized.PL" "Unrealized.PL" "Interest"        
+#[6] "Gross.Trading.PL" "Txn.Fees" "Net.Trading.PL" "Advisory.Fees" "Net.Performance" 
+#[11] "End.Eq"   
+
+#> names(getAccount(acct.name)$portfolios$model)
+#[1] "Long.Value" "Short.Value" "Net.Value" "Gross.Value" "Realized.PL"    
+#[6] "Unrealized.PL" "Gross.Trading.PL" "Txn.Fees" "Net.Trading.PL"  
 
 # > unique(ti.df$ie.tax_category)
 # [1] "NOT_TAXABLE"             "QUALIFIED_DIVIDEND"      "LONG_TERM_CAPITAL_GAIN" 
