@@ -7,6 +7,8 @@ library(blotter)
 library(lubridate)
 library(stringr)
 library(PerformanceAnalytics)
+library(ggplot2)
+library(directlabels)
 options(stringsAsFactors=FALSE)
 options(getSymbols.auto.assign=FALSE)
 options(getSymbols.warning4.0=FALSE)
@@ -290,25 +292,51 @@ pm <- getAccount(acct.name)$portfolios$model
 plot(pm$Gross.Value)
 plot(pm$Realized.PL)
 plot(pm$Net.Trading.PL)
-plot(pm$Net.Performance)
-plot(pm$End.Eq)
 
 # account plot sanity check
 am <- getAccount(acct.name)$summary
 plot(am$Net.Performance)
 plot(am$End.Eq)
 
-# returns
+# component and account returns
 pr <- PortfReturns(acct.name,Portfolios=port.name,period="daily") # all portfolios
+colnames(pr) <- gsub(".DailyEndEq","",colnames(pr))
 ar <- AcctReturns(acct.name)
+cr <- cumprod(1+pr)
 
-# return status
+# portfolio return status
 pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
 colnames(pm) <- c("Model")
 pm$Total <- rowSums(pm, na.rm=TRUE)
 pm$Cumulative <- cumprod(1+pm$Total)
 pm.epl <- dailyEqPL(port.name)
-# pm.tpl <- dailyTxnPL(port.name)
+
+# component return plots
+
+pr.df <- data.frame(pr) %>% mutate(Date=index(pr))
+gf <- pr.df %>% gather(Symbol,Return,-Date)
+ggplot(gf,aes(x=Date,y=Return,color=Symbol)) +
+  geom_line() +
+  facet_wrap(~Symbol,nrow=3,scales="fixed") +
+  xlab(NULL) +
+  guides(color=FALSE)
+ggplot(gf,aes(x=Return,fill=Symbol)) +
+  geom_histogram(binwidth=0.01) +
+  geom_density() +
+  guides(fill=FALSE) +
+  facet_wrap(~Symbol,nrow=3,scales="fixed") +
+  ylab("Frequency") +
+  xlab(paste("Daily Returns",min(gf$Date),"to",max(gf$Date),sep=' '))
+
+# component cumulative returns
+cr.df <- data.frame(cr) %>% mutate(Date=index(cr))
+gf <- cr.df %>% gather(Symbol,Return,-Date)
+p <- ggplot(gf,aes(x=Date,y=Return,color=Symbol)) +
+  geom_line() +
+  xlab(NULL) +
+  guides(color=FALSE) +
+  ggtitle("Model Component Cumulative Return")
+direct.label(p)
 
 # trade stats
 stats <- tradeStats(port.name)
