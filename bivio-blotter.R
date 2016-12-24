@@ -14,15 +14,13 @@ options(getSymbols.auto.assign=FALSE)
 options(getSymbols.warning4.0=FALSE)
 source("prettyStats.R")
 
-# initialize blotter
-if (!exists(".blotter"))
-  .blotter <- new.env()
-init.date <- "2016-09-01"
+# initialize blotter parameters
+init.date <- "2016-08-01"
 init.eq <- 2e5
 port.name <- "model"
 acct.name <- "ggcm"
 Sys.setenv(TZ="GMT")
-rm(list=ls(envir=.blotter),envir=.blotter)
+
 
 
 # t <- xmlTreeParse("clubexp.xml")
@@ -143,8 +141,9 @@ ti.df <- left_join(tdf %>%
   select(-me.valuation_date,-as.id,-as.key,-ae.realm_id,-ie.acquisition_date) %>% 
   select(-ae.amount,-ae.type,-ae.tax_basis,-ae.tax_category,-ae.allocate,-ae.expense_id)
 
-# trim to start September 16, 2016, fund transition buy date
-tday <- first(which(ti.df$date=="2016-09-16"))
+# trim to start August 3, 2016, regime transition action date; first buy 2016-08-05
+switch_date <- "2016-08-05"
+tday <- first(which(ti.df$date==switch_date))
 ti.df <- ti.df[tday:nrow(ti.df),]
 
 # trim the capital gains records, bookkeeping not related to blotter
@@ -152,26 +151,43 @@ ti.df <- ti.df[tday:nrow(ti.df),]
 ti.df <- ti.df %>% 
   filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
 
-# remaining symbols are likely model basket elements
-transaction_tickers <- unique(ti.df$ticker_symbol)
+# purge some regime overlap tickers; these had transactions after model regime start
+# 2016/08 minutes: tickers AFL, ESV, NE, QCOM, WFC and XLP to be kept, all else sell
+# Here we ignore the kept tickers anyway so we don't accumulate them for the scorecard.
+# 2016/08 minutes: new positions starting model regime: XLP, XLU, TLT (RSO model)
+ignore_tickers <- c('AFL','BWXT','COH','EMC','EMN','ESV','FL',
+                    'FOSL','GILD','GM','GS','HYLD','MRK','NE',
+                    'NOV','NSC','PGNPQ','QCOM','RYU','SLB','T','TROW',
+                    'TRV','WFC','XLRE')
+ti.df <- ti.df %>% filter(ticker_symbol %nin% ignore_tickers)
 
 # fetch then adjust ticker historical data
-model_tickers <- c()
+# remaining symbols are likely model basket elements
+transaction_tickers <- unique(ti.df$ticker_symbol)
+model_tickers <- c() # empty to start, then fill with non-option tickers
 for ( mt in transaction_tickers ) {
-  if ( ! str_detect(mt,"[0-9]") ) {
+  if ( str_detect(mt,"[0-9]") == FALSE ) {
     message(paste("Fetching",mt))
     dx <- getSymbols(mt,
                      from=init.date,
                      index.class=c("POSIXt","POSIXct"),
                      warnings=FALSE,
                      verbose=FALSE)
-    dx <- adjustOHLC(dx,use.Adjusted=TRUE)
-    dx <- dx["2016-08::",]
+    dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
+    dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
     colnames(dx) <- gsub(paste(mt,'.',sep=''),"",colnames(dx))
-    assign(mt,dx,envir=.GlobalEnv)
-    model_tickers <- c(model_tickers,mt)
+    assign(mt,dx,envir=.GlobalEnv) # put back into global environment
+    model_tickers <- c(model_tickers,mt) # add ticker to the model tickers list
   }
 }  
+
+# final purge of transactions, eliminate options transactions (for now)
+ti.df <- ti.df %>% filter(ticker_symbol %in% model_tickers )
+
+# clear the blotter account and portfolios
+if (!exists(".blotter"))
+  .blotter <- new.env()
+rm(list=ls(envir=.blotter),envir=.blotter)
 
 # setup blotter account and portfolio
 initPortf(name=port.name, model_tickers, initDate=init.date, currency="USD")
@@ -187,10 +203,34 @@ for ( mt in model_tickers) {
 verbose=TRUE
 for ( i in 1:nrow(ti.df) ) {
   ti <- ti.df[i,]
+  # switch returns a function having ti parameter
   rv <- switch(ti$ie.type,
+               "INSTRUMENT_COVER_SHORT_SALE"=function(ti) {
+                 message(paste("Ignoring option transaction",ti$date,ti$ticker_symbol))
+               },
+               "INSTRUMENT_SHORT_SALE"=function(ti) {
+                 warning(paste("Ignoring short sale",ti$date,ti$ticker_symbol))
+               },
+               "INSTRUMENT_EXERCISE_BUY_OPTION"=function(ti) {
+                 message(paste("Ignoring option buy exercise",ti$date,ti$ticker_symbol))
+               },
+               "INSTRUMENT_EXERCISE_SELL_OPTION"=function(ti) {
+                 message(paste("Ignoring option sell exercise"),ti$date,ti$ticker_symbol)
+               },
+               "INSTRUMENT_SPLIT"=function(ti) {
+                 warning(paste("Ignoring instrument split",ti$date,ti$ticker_symbol))
+               },
+               "INSTRUMENT_MERGER"=function(ti) {
+                 warning(paste("Ignoring merger",ti$date,ti$ticker_symbol))
+               },
+               "INSTRUMENT_SPINOFF"=function(ti) {
+                 warning(paste("Ignoring spinoff",ti$date,ti$ticker_symbol))
+               },
+               "INSTRUMENT_WASH_SALE"=function(ti) {
+                 warning(paste("Ignoring wash sale",ti$date,ti$ticker_symbol))
+               },
                "INSTRUMENT_BUY_COMMISSION"=function(ti) {
                  # amount is positive
-                 # paste(ti$date,"BUY COMMISSION",ti$ticker_symbol,ti$ie.amount)
                  addTxn(Portfolio=port.name, 
                         Symbol=ti$ticker_symbol, 
                         TxnDate=ti$date,
@@ -201,7 +241,6 @@ for ( i in 1:nrow(ti.df) ) {
                },
                "INSTRUMENT_BUY"=function(ti) {
                  # count is positive, amount is positive
-                 # paste(ti$date,"BUY",ti$ie.count,ti$ticker_symbol,ti$ie.amount)
                  count <- as.numeric(ti$ie.count)
                  price <- ti$ie.amount / count
                  addTxn(Portfolio=port.name, 
@@ -214,7 +253,6 @@ for ( i in 1:nrow(ti.df) ) {
                },
                "INSTRUMENT_SELL"=function(ti) {
                  # count is negative, amount is negative
-                 # paste(ti$date,"SELL",ti$ie.count,ti$ticker_symbol,ti$ie.amount)
                  count <- as.numeric(ti$ie.count)
                  price <- ti$ie.amount / count
                  addTxn(Portfolio=port.name, 
@@ -227,7 +265,6 @@ for ( i in 1:nrow(ti.df) ) {
                },
                "INSTRUMENT_SELL_COMMISSION_AND_FEE"=function(ti) {
                  # amount is negative
-                 # paste(ti$date,"SELL COMMISSION",ti$ticker_symbol,ti$ie.amount)
                  addTxn(Portfolio=port.name, 
                         Symbol=ti$ticker_symbol, 
                         TxnDate=ti$date,
@@ -238,7 +275,6 @@ for ( i in 1:nrow(ti.df) ) {
                },
                "INSTRUMENT_DISTRIBUTION_CASH"=function(ti) {
                  # amount is positive
-                 # paste(ti$date,"CASH DISTRIBUTION",ti$ticker_symbol,ti$ie.amount)
                  qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
                  if ( qty > 0 ) {
                  dps <- ti$ie.amount / qty
@@ -258,7 +294,6 @@ for ( i in 1:nrow(ti.df) ) {
                },
                "INSTRUMENT_DISTRIBUTION_RETURN_OF_CAPITAL"=function(ti) {
                  # amount is negative
-                 # paste(ti$date,"CAPITAL DISTRIBITION",ti$ticker_symbol,ti$ie.amount)
                  qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
                  amount <- abs(ti$ie.amount)
                  if ( qty > 0 ) {
@@ -277,8 +312,10 @@ for ( i in 1:nrow(ti.df) ) {
                               verbose=verbose)
                  }
                },
-               function(ti) { message(paste("TI switch did not match",ti$ie.type)) }
-               )
+               function(ti) { 
+                 warning(paste("TI switch did not match",ti$ie.type)) 
+                 }
+               ) # switch
   rv(ti)
 }
 
@@ -320,10 +357,10 @@ ggplot(gf,aes(x=Date,y=Return,color=Symbol)) +
   facet_wrap(~Symbol,nrow=3,scales="fixed") +
   xlab(NULL) +
   guides(color=FALSE)
-ggplot(gf,aes(x=Return,fill=Symbol)) +
+ggplot(gf,aes(x=Return,fill=Symbol,color=Symbol)) +
   geom_histogram(binwidth=0.01) +
   geom_density() +
-  guides(fill=FALSE) +
+  guides(fill=FALSE,color=FALSE) +
   facet_wrap(~Symbol,nrow=3,scales="fixed") +
   ylab("Frequency") +
   xlab(paste("Daily Returns",min(gf$Date),"to",max(gf$Date),sep=' '))
