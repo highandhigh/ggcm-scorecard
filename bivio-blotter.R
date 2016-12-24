@@ -1,27 +1,46 @@
-library(XML)
-library(timeSeries)
-library(quantmod)
-library(tidyr)
-library(dplyr)
-library(blotter)
-library(lubridate)
-library(stringr)
-library(PerformanceAnalytics)
-library(ggplot2)
-library(directlabels)
+# ggcm-models
+# bivio and blotter integration
+# TODO run scorecard models with investment; simulated trades
+# TODO add performance metrics
+# TODO format scorecard
+# TODO buy-hold equal weight basket 
+# TODO ggplot position chart, like chart.Posn
+
+invisible(suppressPackageStartupMessages(lapply(c("XML",
+                                                  "timeSeries",
+                                                  "quantmod",
+                                                  "tidyr",
+                                                  "dplyr",
+                                                  "blotter",
+                                                  "lubridate",
+                                                  "stringr",
+                                                  "PerformanceAnalytics",
+                                                  "ggplot2",
+                                                  "directlabels",
+                                                  "scales"
+                                                  ),
+                                                library,
+                                                warn.conflicts=FALSE, 
+                                                character.only=TRUE,
+                                                verbose=FALSE)))
+invisible(suppressMessages(lapply(c("lib/checkBlotter.R",
+                                    "lib/emit.R",
+                                    "lib/prettyStats.R"
+                                    ),
+                                  source,verbose=FALSE)))
+
 options(stringsAsFactors=FALSE)
 options(getSymbols.auto.assign=FALSE)
 options(getSymbols.warning4.0=FALSE)
-source("prettyStats.R")
 
 # initialize blotter parameters
 init.date <- "2016-08-01"
-init.eq <- 2e5
-port.name <- "model"
+switch.date <- "2016-08-05"
+init.eq <- 250000 # per model
 acct.name <- "ggcm"
+port.name <- "model"
 Sys.setenv(TZ="GMT")
-
-
+benchmark.symbol <- "SPY"
 
 # t <- xmlTreeParse("clubexp.xml")
 # topXml <- xmlRoot(t)
@@ -74,6 +93,20 @@ iedf <- function(y) {
              ie.external_id=xmlValue(yc$external_identifier),
              ie.realm_id=xmlValue(yc$realm_instrument_id)
   )
+}
+
+# get symbol data, adjust close, trim history, save to global environment
+getAndAdjust <- function(ticker,init_date,switch_date) {
+  message(paste("Fetching",ticker))
+  dx <- getSymbols(ticker,
+                   from=init_date,
+                   index.class=c("POSIXt","POSIXct"),
+                   warnings=FALSE,
+                   verbose=FALSE)
+  dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
+  dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
+  colnames(dx) <- gsub(paste(ticker,'.',sep=''),"",colnames(dx))
+  assign(ticker,dx,envir=.GlobalEnv) # put back into global environment
 }
 
 # export info
@@ -142,8 +175,7 @@ ti.df <- left_join(tdf %>%
   select(-ae.amount,-ae.type,-ae.tax_basis,-ae.tax_category,-ae.allocate,-ae.expense_id)
 
 # trim to start August 3, 2016, regime transition action date; first buy 2016-08-05
-switch_date <- "2016-08-05"
-tday <- first(which(ti.df$date==switch_date))
+tday <- first(which(ti.df$date==switch.date))
 ti.df <- ti.df[tday:nrow(ti.df),]
 
 # trim the capital gains records, bookkeeping not related to blotter
@@ -167,16 +199,7 @@ transaction_tickers <- unique(ti.df$ticker_symbol)
 model_tickers <- c() # empty to start, then fill with non-option tickers
 for ( mt in transaction_tickers ) {
   if ( str_detect(mt,"[0-9]") == FALSE ) {
-    message(paste("Fetching",mt))
-    dx <- getSymbols(mt,
-                     from=init.date,
-                     index.class=c("POSIXt","POSIXct"),
-                     warnings=FALSE,
-                     verbose=FALSE)
-    dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
-    dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
-    colnames(dx) <- gsub(paste(mt,'.',sep=''),"",colnames(dx))
-    assign(mt,dx,envir=.GlobalEnv) # put back into global environment
+    ignore <- getAndAdjust(mt,init.date,switch.date)
     model_tickers <- c(model_tickers,mt) # add ticker to the model tickers list
   }
 }  
@@ -277,39 +300,59 @@ for ( i in 1:nrow(ti.df) ) {
                  # amount is positive
                  qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
                  if ( qty > 0 ) {
-                 dps <- ti$ie.amount / qty
-                 addDiv(Portfolio=port.name, 
-                        Symbol=ti$ticker_symbol, 
-                        TxnDate=ti$date,
-                        DivPerShare=dps,
-                        TxnFees=0, 
-                        verbose=verbose)
+                 #dps <- ti$ie.amount / qty
+                 #addDiv(Portfolio=port.name, 
+                 #        Symbol=ti$ticker_symbol, 
+                 #        TxnDate=ti$date,
+                 #        DivPerShare=dps,
+                 #        TxnFees=0, 
+                 #        verbose=verbose)
+                 message(paste("Ignoring cash distribution",
+                               ti$date,
+                               ti$ticker_symbol,
+                               dollar(ti$ie.amount),
+                               qty))
                  } else {
                    # dividend received after having sold position
-                   addAcctTxn(acct.name,
-                              ti$date,
-                              TxnType = "Additions",                                                                      ti$ie.amount,
-                              verbose=verbose)
+                   #addAcctTxn(acct.name,
+                   #            ti$date,
+                   #            TxnType = "Additions",                                               #                       ti$ie.amount,
+                   #            verbose=verbose)
+                   message(paste("Ignoring cash distribution",
+                                 ti$date,
+                                 ti$ticker_symbol,
+                                 dollar(ti$ie.amount),
+                                 qty))
                  }
                },
                "INSTRUMENT_DISTRIBUTION_RETURN_OF_CAPITAL"=function(ti) {
                  # amount is negative
+                 # adjusted close price already considers distributions
                  qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
                  amount <- abs(ti$ie.amount)
                  if ( qty > 0 ) {
-                   dps <- amount / qty
-                   addDiv(Portfolio=port.name, 
-                          Symbol=ti$ticker_symbol, 
-                          TxnDate=ti$date,
-                          DivPerShare=dps,
-                          TxnFees=0, 
-                          verbose=verbose)
+                  # dps <- amount / qty
+                  # addDiv(Portfolio=port.name, 
+                  #        Symbol=ti$ticker_symbol, 
+                  #        TxnDate=ti$date,
+                  #        DivPerShare=dps,
+                  #        TxnFees=0, 
+                  #        verbose=verbose)
+                   message(paste("Ignoring capital distribution",
+                           ti$date,
+                           ti$ticker_symbol,
+                           dollar(amount),
+                           qty))
                  } else {
                    # distribution received after having sold position
-                   addAcctTxn(acct.name,
-                              ti$date,
-                              TxnType = "Additions",                                                                      amount,
-                              verbose=verbose)
+                   #addAcctTxn(acct.name,
+                   #            ti$date,
+                   #            TxnType = "Additions",                                               #                       amount,
+                   #            verbose=verbose)
+                   message(paste("Ignoring capital distribution",
+                           ti$date,
+                           ti$ticker_symbol,
+                           dollar(amount)))
                  }
                },
                function(ti) { 
@@ -341,6 +384,12 @@ colnames(pr) <- gsub(".DailyEndEq","",colnames(pr))
 ar <- AcctReturns(acct.name)
 cr <- cumprod(1+pr)
 
+# benchmark returns
+ignore <- getAndAdjust(benchmark.symbol,init.date,switch.date)
+benchmark.returns <- diff(Cl(log(get(benchmark.symbol))))[-1,]
+colnames(benchmark.returns) <- "Benchmark"
+benchmark.cumulatives <- cumprod(1+benchmark.returns)
+
 # portfolio return status
 pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
 colnames(pm) <- c("Model")
@@ -348,8 +397,15 @@ pm$Total <- rowSums(pm, na.rm=TRUE)
 pm$Cumulative <- cumprod(1+pm$Total)
 pm.epl <- dailyEqPL(port.name)
 
-# component return plots
+# individual component prices, drawdown, P&L
+for ( mt in model_tickers) {
+  print(chart.Posn(port.name,mt))
+}
 
+# benchmark candlestick chart
+ggCandles(get(benchmark.symbol),title_param="Benchmark")
+
+# component return plots
 pr.df <- data.frame(pr) %>% mutate(Date=index(pr))
 gf <- pr.df %>% gather(Symbol,Return,-Date)
 ggplot(gf,aes(x=Date,y=Return,color=Symbol)) +
@@ -379,6 +435,11 @@ direct.label(p)
 stats <- tradeStats(port.name)
 formatted.stats <- formatTradeStats(stats)
 textplot(t(formatted.stats))
+
+# model performance ratios
+calmar_ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
+annual_percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
+
 
 
 #> names(getAccount(acct.name)$summary)

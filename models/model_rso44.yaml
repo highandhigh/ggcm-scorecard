@@ -1,6 +1,7 @@
 # RSO model config
 model: "rso"
 version: "0.2"
+partner: "vanhalen"
 
 config:
   smoothing: [.4,.1]

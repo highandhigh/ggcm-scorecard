@@ -1,6 +1,7 @@
 # 3ROC model config
 model: "roc3"
 version: "0.1"
+partner: "rocker"
 
 config:
   periods: [1,2,3]
