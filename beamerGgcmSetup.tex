@@ -1,0 +1,162 @@
+% \usetheme[compress, ricet, numbers]{Rice}
+\usetheme[compress,numbers]{Ggcm}
+
+% preamble for GGCM study-formatted latex/beamer slides
+
+\definecolor{darkestblue}{rgb}{.024,.149,.239} % darkest blue 04263E 0.024 0.149 0.239
+\definecolor{darkblue}{rgb}{.047,.243,.388} % darker than official 073D64 0.047 0.243 0.388
+\definecolor{blue}{rgb}{.063,.306,.486} % ggcm official blue 094D7E 0.063 0.306 0.486
+\definecolor{lightblue}{rgb}{.071,.337,.337} % lighter than official 0A558B 0.071 0.337 0.537
+\definecolor{lightestblue}{rgb}{.106,.494,.780} % lighest blue 0E7CCA 0.106 0.494 0.780
+\definecolor{gray}{rgb}{.608,.612,.627} % ggcm official gray  9D9CA0
+
+
+\definecolor{blu}{rgb}{.0,.0,.50}
+
+% note: beamer output size: 128mm x 96mm (5.04in x 3.78in)
+
+% \setbeamercolor{frametitle}{fg=gray,bg=blue}
+% \usecolortheme{dolphin}
+% \setbeamercolor*{palette primary}{use=structure,fg=gray,bg=blue}
+% \setbeamercolor*{palette secondary}{use=structure,fg=gray,bg=blue}
+% \setbeamercolor*{palette tertiary}{use=structure,fg=gray,bg=blue}
+% \setbeamercolor*{palette quaternary}{fg=white,bg=black}
+
+\newcommand{\vb}{\vspace{\baselineskip}}
+\newcommand{\vh}{\vspace{.5\baselineskip}}
+\newcommand{\vq}{\vspace{.25\baselineskip}}
+\newcommand{\vm}{\vspace{-.5\baselineskip}}
+
+\newenvironment<>{noteblock}[1]{%
+\setbeamercolor*{block title}{bg=lightestblue,fg=gray}% These two lines added
+\setbeamercolor*{block body}{bg=lightestblue!60}% to the "block" env. definition
+\begin{actionenv}#2%
+\def\insertblocktitle{#1}%
+\par%
+\usebeamertemplate{block begin}}
+{\par%
+\usebeamertemplate{block end}%
+\end{actionenv}}
+
+\newenvironment<>{myboldblock}[1]{%
+\setbeamercolor*{block title}{bg=gray!20,fg=black}% These two lines added
+\setbeamercolor*{block body}{bg=gray!5}% to the "block" env. definition
+\begin{actionenv}#2%
+\def\insertblocktitle{\footnotesize{\textbf{#1}}}%
+\par%
+\usebeamertemplate{block begin}}
+{\par%
+\usebeamertemplate{block end}%
+\end{actionenv}}
+
+\newenvironment<>{mylistingblock}[1]{%
+\setbeamercolor*{block title}{bg=blue!10,fg=black}% These two lines added
+\setbeamercolor*{block body}{bg=gray!2}% to the "block" env. definition
+\begin{actionenv}#2%
+\def\insertblocktitle{\footnotesize{\textbf{#1}}}%
+\par%
+\usebeamertemplate{block begin}}
+{\par%
+\usebeamertemplate{block end}%
+\end{actionenv}}
+
+\newenvironment<>{bluenote}[1]{%
+\setbeamercolor*{block title}{bg=blue,fg=white}% These two lines added
+\setbeamercolor*{block body}{bg=blue!20}% to the "block" env. definition
+\begin{actionenv}#2%
+\def\insertblocktitle{#1}%
+\par%
+\usebeamertemplate{block begin}}
+{\par%
+\usebeamertemplate{block end}%
+\end{actionenv}}
+
+\newenvironment<>{mydefinition}[1]{%
+\setbeamercolor*{block title}{bg=blue!50,fg=black}% These two lines added
+\setbeamercolor*{block body}{bg=blue!20}% to the "block" env. definition
+\begin{actionenv}#2%
+\def\insertblocktitle{#1}%
+\par%
+\usebeamertemplate{block begin}}
+{\par%
+\usebeamertemplate{block end}%
+\end{actionenv}}
+
+\setlength{\labelsep}{1.0em}
+\newenvironment{mydescription}[1]
+  {\begin{list}{}%
+   {\renewcommand\makelabel[1]{\color{blu}{##1}\hfill}%
+   \settowidth\labelwidth{\makelabel{#1}}%
+   \setlength\leftmargin{\labelwidth}
+   \addtolength\leftmargin{\labelsep}}}
+  {\end{list}}
+
+\setlength{\labelsep}{1.0em}
+\newenvironment{bethdescription}[1]
+  {\begin{list}{}%
+   {\renewcommand\makelabel[1]{\color{blu}\hfill{##1}}%
+   \settowidth\labelwidth{\makelabel{#1}}%
+   \setlength\leftmargin{\labelwidth}
+   \addtolength\leftmargin{\labelsep}}}
+  {\end{list}}
+
+\newenvironment{myindentpar}[1]%
+{\begin{list}{}%
+         {\setlength{\leftmargin}{#1}}%
+         \item[]%
+}
+{\end{list}}
+
+% \setbeamercolor{postit}{fg=blue,bg=gray}
+% \setbeamercolor{block body}{bg=gray!10}
+% \setbeamercolor{block title}{bg=gray!20,fg=black}
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+
+% package below is to fix the error "No room for a new \dimen" which showed up in August of 2014
+\usepackage{etex}
+\usepackage{siunitx}
+\usepackage{booktabs}
+%\usepackage{ctable}
+\setlength{\heavyrulewidth}{0.1 em}
+\newcommand {\otoprule}{\midrule[\heavyrulewidth]}
+\usepackage{ulem}
+\usepackage{listings}
+\usepackage[absolute,overlay,showboxes]{textpos}
+% line below is commented out to avoid grid display when using
+% the package handoutWithNotes
+%\usepackage[colorgrid,texcoord]{eso-pic}
+\usepackage{tikz}
+\usetikzlibrary{shapes.callouts}
+\usepackage{multirow}
+\usepackage{colortbl}
+
+\setlength{\jot}{10pt}
+
+%adjust the TPHorizModule and TPHorizModule units to the displayed mm %grid
+\TPGrid{128}{96}
+\TPMargin{5pt}
+\textblockrulecolour{red}
+\TPshowboxesfalse
+%\textblockcolour{gray!20}
+
+%puts a graphic at the absolute position described by the grid
+%#1 x, #2 y, #3 width, #4 height, #5 graphic
+\newcommand\putpic[5]{%
+        \begin{textblock}{#3}(#1,#2)
+  \includegraphics[width=#3\TPHorizModule,
+  height=#4\TPVertModule]{#5}
+     \end{textblock}
+}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\setbeamertemplate{navigation symbols}{}
+
+% the following 2 lines
+% fix the Corrupted NFSS tables problem
+% and produce a document with no font related warnings
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+%\usepackage[noae]{Sweave}
+
