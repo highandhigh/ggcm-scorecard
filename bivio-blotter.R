@@ -103,7 +103,9 @@ getAndAdjust <- function(ticker,init_date,switch_date) {
                    index.class=c("POSIXt","POSIXct"),
                    warnings=FALSE,
                    verbose=FALSE)
-  dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
+  if ( has.Ad(dx) ) {
+    dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
+  }
   dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
   colnames(dx) <- gsub(paste(ticker,'.',sep=''),"",colnames(dx))
   assign(ticker,dx,envir=.GlobalEnv) # put back into global environment
@@ -437,10 +439,26 @@ formatted.stats <- formatTradeStats(stats)
 textplot(t(formatted.stats))
 
 # model performance ratios
-calmar_ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
-annual_percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
+calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
+annual.percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
 
+# downside risk
+downrisk <- table.DownsideRisk(cbind(pm$Model,benchmark.returns),
+                               Rf=.01/252,
+                               MAR=.1/252,
+                               digits=2)
+textplot(downrisk,wrap.colnames=16,wrap.rownames = 30)
+title(paste("Model and Benchmark Downside Risk Since",switch.date))
+title(sub="Confidence interval 95%")
 
+# max drawdown
+max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
+# chart.Drawdown(pm$Model) ## TODO do this with ggplot2
+drawdowns <- table.Drawdowns(pm$Model,
+                             top=5,
+                             digits=3)
+textplot(drawdowns,wrap.colnames=16,wrap.rownames=30)
+title(paste("Top Model Drawdowns Since",switch.date))
 
 #> names(getAccount(acct.name)$summary)
 #[1] "Additions" "Withdrawals" "Realized.PL" "Unrealized.PL" "Interest"        
