@@ -1,10 +1,12 @@
-# ggcm-models
-# bivio and blotter integration
+#' @title ggcm-models
+#' @description Bivio transactions, models, and blotter integration.
+#' @author mrb, \email{mrb@greatgray.org}
+
 # TODO run scorecard models with investment; simulated trades
-# TODO add performance metrics
 # TODO format scorecard
 # TODO buy-hold equal weight basket 
 # TODO ggplot position chart, like chart.Posn
+# TODO use formattable for this data frame
 
 invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                   "timeSeries",
@@ -25,7 +27,8 @@ invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                 verbose=FALSE)))
 invisible(suppressMessages(lapply(c("lib/checkBlotter.R",
                                     "lib/emit.R",
-                                    "lib/prettyStats.R"
+                                    "lib/prettyStats.R",
+                                    "lib/ggutil.R"
                                     ),
                                   source,verbose=FALSE)))
 
@@ -267,11 +270,13 @@ for ( i in 1:nrow(ti.df) ) {
                "INSTRUMENT_BUY"=function(ti) {
                  # count is positive, amount is positive
                  count <- as.numeric(ti$ie.count)
-                 price <- ti$ie.amount / count
+                 # recorded.price <- ti$ie.amount / count # transaction price not adjusted
+                 ticker.xts <- get(ti$ticker_symbol)
+                 adjusted.price <- Cl(ticker.xts[ti$date,])
                  addTxn(Portfolio=port.name, 
                         Symbol=ti$ticker_symbol, 
                         TxnDate=ti$date,
-                        TxnPrice=price,
+                        TxnPrice=adjusted.price,
                         TxnQty=count, 
                         TxnFees=0,
                         verbose=verbose)
@@ -279,11 +284,13 @@ for ( i in 1:nrow(ti.df) ) {
                "INSTRUMENT_SELL"=function(ti) {
                  # count is negative, amount is negative
                  count <- as.numeric(ti$ie.count)
-                 price <- ti$ie.amount / count
+                 # recorded.price <- ti$ie.amount / count
+                 ticker.xts <- get(ti$ticker_symbol)
+                 adjusted.price <- Cl(ticker.xts[ti$date,])
                  addTxn(Portfolio=port.name, 
                         Symbol=ti$ticker_symbol, 
                         TxnDate=ti$date,
-                        TxnPrice=price,
+                        TxnPrice=adjusted.price,
                         TxnQty=count, 
                         TxnFees=0,
                         verbose=verbose)
@@ -369,16 +376,28 @@ updatePortf(port.name)
 updateAcct(acct.name)
 updateEndEq(acct.name)
 
+plotModelStat <- function(ms,title,y.label="Value ($)",line.color="blue") {
+  df <- data.frame(coredata(ms),index(ms))
+  colnames(df) <- c("Value","Date")
+  g <- ggplot(df,aes(x=Date,y=Value)) +
+    geom_line(color=line.color) +
+    xlab(NULL) +
+    scale_y_continuous(name=y.label,labels=dollar) +
+    ggtitle(title)
+}
+
 # portfolio plot sanity check
-pm <- getAccount(acct.name)$portfolios$model
-plot(pm$Gross.Value)
-plot(pm$Realized.PL)
-plot(pm$Net.Trading.PL)
+model.stats <- getAccount(acct.name)$portfolios$model
+ms1 <- plotModelStat(model.stats$Gross.Value,"Model Stats: Gross Value")
+ms3 <- plotModelStat(model.stats$Net.Trading.PL,"Model Stats: Net Trading P&L")
+ms1
+ms3
 
 # account plot sanity check
-am <- getAccount(acct.name)$summary
-plot(am$Net.Performance)
-plot(am$End.Eq)
+account.summary <- getAccount(acct.name)$summary
+as1 <- plotModelStat(account.summary$End.Eq,"Account Stats: Ending Equity")
+as1
+
 
 # component and account returns
 pr <- PortfReturns(acct.name,Portfolios=port.name,period="daily") # all portfolios
@@ -435,46 +454,56 @@ direct.label(p)
 
 # trade stats
 stats <- tradeStats(port.name)
-formatted.stats <- formatTradeStats(stats)
-textplot(t(formatted.stats))
+#formatted.stats <- formatTradeStats(stats)
+#textplot(t(formatted.stats))
+
+stats <- stats %>% select(-Symbol,-Portfolio,
+                          -Med.Trade.PL,-Std.Dev.Trade.PL,
+                          -Percent.Positive,-Percent.Negative,
+                          -Avg.Win.Trade,-Avg.Losing.Trade,
+                          -Med.Win.Trade,-Med.Losing.Trade,-Avg.Trade.PL,
+                          -Avg.Daily.PL,-Med.Daily.PL,-Std.Dev.Daily.PL,
+                          -Med.WinLoss.Ratio,
+                          -End.Equity)
+stats[is.na(stats)] <- 0
+formatted.stats <- formattable(stats,list(
+  area(col=c(Max.Equity)) ~ normalize_bar("lightgreen",min=0,max=1),
+  area(col=c(Min.Equity)) ~ normalize_bar("pink",max=0,min=-1),
+  # Largest.Winner = color_tile("white","green"),
+  # Largest.Loser = color_tile("red","white"),
+  area(col=c(Largest.Winner)) ~ normalize_bar("lightgreen",min=0,max=1),
+  area(col=c(Largest.Loser)) ~ normalize_bar("pink",max=0,min=-1),
+  # Largest.Winner = accounting(stats$Largest.Winner),
+  Avg.WinLoss.Ratio = color_tile("white","green"),
+  Profit.To.Max.Draw = color_tile("white","green")
+))
+for ( fsn in names(formatted.stats) )
+  formatted.stats[,fsn] = accounting(stats[,fsn],digits=0)
+  
+
 
 # model performance ratios
-calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
 annual.percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
+calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
+sortino.ratio <- as.numeric(SortinoRatio(pm$Model,MAR=0)) # ratio
+max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
+
+
 
 # downside risk
-downrisk <- table.DownsideRisk(cbind(pm$Model,benchmark.returns),
-                               Rf=.01/252,
-                               MAR=.1/252,
-                               digits=2)
-textplot(downrisk,wrap.colnames=16,wrap.rownames = 30)
-title(paste("Model and Benchmark Downside Risk Since",switch.date))
-title(sub="Confidence interval 95%")
+# downrisk <- table.DownsideRisk(cbind(pm$Model,benchmark.returns),
+#                                Rf=.01/252,
+#                                MAR=.1/252,
+#                                digits=2)
+# textplot(downrisk,wrap.colnames=16,wrap.rownames = 30)
+# title(paste("Model and Benchmark Downside Risk Since",switch.date))
+# title(sub="Confidence interval 95%")
 
-# max drawdown
-max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
 # chart.Drawdown(pm$Model) ## TODO do this with ggplot2
-drawdowns <- table.Drawdowns(pm$Model,
-                             top=5,
-                             digits=3)
-textplot(drawdowns,wrap.colnames=16,wrap.rownames=30)
-title(paste("Top Model Drawdowns Since",switch.date))
+# drawdowns <- table.Drawdowns(pm$Model,
+#                              top=5,
+#                              digits=3)
+# textplot(drawdowns,wrap.colnames=16,wrap.rownames=30)
+# title(paste("Top Model Drawdowns Since",switch.date))
 
-#> names(getAccount(acct.name)$summary)
-#[1] "Additions" "Withdrawals" "Realized.PL" "Unrealized.PL" "Interest"        
-#[6] "Gross.Trading.PL" "Txn.Fees" "Net.Trading.PL" "Advisory.Fees" "Net.Performance" 
-#[11] "End.Eq"   
 
-#> names(getAccount(acct.name)$portfolios$model)
-#[1] "Long.Value" "Short.Value" "Net.Value" "Gross.Value" "Realized.PL"    
-#[6] "Unrealized.PL" "Gross.Trading.PL" "Txn.Fees" "Net.Trading.PL"  
-
-# > unique(ti.df$ie.tax_category)
-# [1] "NOT_TAXABLE"             "QUALIFIED_DIVIDEND"      "LONG_TERM_CAPITAL_GAIN" 
-# [4] "SHORT_TERM_CAPITAL_GAIN" "DIVIDEND"  
-
-# > unique(ti.df$ie.type)
-# [1] "INSTRUMENT_EXERCISE_BUY_OPTION"    "INSTRUMENT_BUY_COMMISSION"             
-# [3] "INSTRUMENT_BUY"                    "INSTRUMENT_DISTRIBUTION_CASH"            
-# [5] "INSTRUMENT_SELL"                   "INSTRUMENT_SELL_COMMISSION_AND_FEE"      
-# [7] "INSTRUMENT_COVER_SHORT_SALE"       "INSTRUMENT_DISTRIBUTION_RETURN_OF_CAPITAL"
