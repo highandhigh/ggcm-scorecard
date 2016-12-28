@@ -13,10 +13,10 @@ config:
     
 backtest:
   start: 2004-12-01
-  top: 2016-09-14 # out-of-sample start
-  niteq: 1000000
-  ransaction: -4.95
-  enchmark: SPY
+  stop: 2016-09-14 # out-of-sample start
+  initeq: 1000000
+  transaction: -4.95
+  benchmark: SPY
     
 history:
   - sample: "2016-03-01"

@@ -311,6 +311,7 @@ for ( mf in model.files ) {
   if (!exists(".blotter"))
     .blotter <- new.env()
   rm(list=ls(envir=.blotter),envir=.blotter)
+  FinancialInstrument::currency("USD")
 
   # setup blotter account and portfolio
   initPortf(name=port.name, model.basket, initDate=init.date, currency="USD")
@@ -637,6 +638,20 @@ for ( mf in model.files ) {
   bh.calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
   bh.sortino.ratio <- as.numeric(SortinoRatio(pm$Model,MAR=0)) # ratio
   bh.max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
+  
+  # combined active model and buy-hold cumulative return
+  xc.df <- bind_cols(data.frame(pm$Cumulative),
+                  data.frame(bhp$Cumulative),
+                  data.frame(index(pm$Cumulative)))
+  colnames(xc.df) <- c(model.name,"Buy-Hold","Date")
+  gf <- xc.df %>% gather(Portfolio,Return,-Date)
+  p <- ggplot(gf,aes(x=Date,y=Return,color=Portfolio)) +
+    geom_line() +
+    xlab(NULL) +
+    ylab("Portfolio Return") +
+    guides(color=FALSE) +
+    ggtitle(paste(model.name,"vs. Buy-Hold Basket Cumulative Return"))
+  direct.label(p)
   
 }
 
