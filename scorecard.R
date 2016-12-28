@@ -23,17 +23,17 @@ invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                   "ggplot2",
                                                   "directlabels",
                                                   "scales"
-                                                  ),
-                                                library,
-                                                warn.conflicts=FALSE, 
-                                                character.only=TRUE,
-                                                verbose=FALSE)))
+),
+library,
+warn.conflicts=FALSE, 
+character.only=TRUE,
+verbose=FALSE)))
 invisible(suppressMessages(lapply(c("lib/checkBlotter.R",
                                     "lib/emit.R",
                                     "lib/prettyStats.R",
                                     "lib/ggutil.R"
-                                    ),
-                                  source,verbose=FALSE)))
+),
+source,verbose=FALSE)))
 
 options("stringsAsFactors"=FALSE)
 options("getSymbols.auto.assign"=FALSE)
@@ -289,6 +289,13 @@ ignore.tickers <- c('AFL','BWXT','COH','EMC','EMN','ESV','FL',
 ti.df <- ti.df %>% filter(ticker_symbol %nin% ignore.tickers)
 transaction.tickers <- unique(ti.df$ticker_symbol)
 
+# benchmark returns applicable to every model
+ignore <- getAndAdjust(benchmark.symbol,init.date,switch.date)
+benchmark.returns <- diff(Cl(log(get(benchmark.symbol))))[-1,]
+colnames(benchmark.returns) <- "Benchmark"
+benchmark.cumulatives <- cumprod(1+benchmark.returns)
+
+
 # identify model configuration files from scorecard
 model.files <- unlist(sapply(scorecard.table,function(section) {
   unlist(sapply(section$models,function(m){
@@ -296,7 +303,62 @@ model.files <- unlist(sapply(scorecard.table,function(section) {
   }))
 }))
 
-# collect reesults for each model configuration
+# find model status
+find.status <- function(name) {
+  rv <- "NF"
+  for ( si in scorecard.table ) {
+    status <- si$status
+    for ( mi in si$models ) {
+      if ( grepl(name,mi$config) ) {
+        rv <- status
+      }
+    }
+  }
+  return(rv)
+}
+
+# find model live date
+find.live <- function(name) {
+  rv <- ""
+  for ( si in scorecard.table ) {
+    if ( grepl(si$status,'activated') ) {
+      for ( mi in si$models ) {
+        if ( grepl(name,mi$config) ) {
+          rv <- mi$live
+        }
+      }
+    }
+  }
+  return(rv)
+}
+
+
+### initialize scorecard
+scorecard.out <- data.frame()
+refresh <- today()
+for ( mf in model.files ) {
+  location <- paste("models",mf,sep='/')
+  mc <- yaml.load_file(location)
+  df <- data.frame(Status=find.status(mf),
+                   ModelID=mc$model,
+                   Exp.OOS=mc$backtest$stop,
+                   Exp.CAGR=mc$backtest$cagr,
+                   Exp.MDD=mc$backtest$mdd,
+                   Exp.Sortino=mc$backtest$sortino,
+                   Exp.Calmar=mc$backtest$calmar,
+                   Data.Live=find.live(mf),
+                   Data.Refresh=refresh,
+                   Actual.CAGR=NA,
+                   Actual.MDD=NA,
+                   Actual.Sortino=NA,
+                   Actual.Calmar=NA,
+                   Owner=mc$partner
+  )
+  scorecard.out <- bind_rows(scorecard.out,df)
+}
+rownames(scorecard.out) <- scorecard.out$ModelID
+
+### collect reesults for each model configuration
 for ( mf in model.files ) {
   location <- paste("models",mf,sep='/')
   model.configuration <- yaml.load_file(location)
@@ -312,7 +374,7 @@ for ( mf in model.files ) {
     .blotter <- new.env()
   rm(list=ls(envir=.blotter),envir=.blotter)
   FinancialInstrument::currency("USD")
-
+  
   # setup blotter account and portfolio
   initPortf(name=port.name, model.basket, initDate=init.date, currency="USD")
   initAcct(name=acct.name, portfolios=c(port.name), initDate=init.date, initEq=init.eq)
@@ -322,14 +384,12 @@ for ( mf in model.files ) {
   initPortf("buyhold.port", symbols=model.basket, initDate=init.date)
   initAcct("buyhold.acct", portfolios="buyhold.port", initDate=init.date, initEq=init.eq)
   
-
   # setup blotter instruments
   for ( mt in model.basket) {
     stock(mt,currency="USD")
   }
   
   # add transactions to blotter
-  
   for ( i in 1:nrow(transactions.df) ) {
     ti <- transactions.df[i,]
     # switch returns a function having ti parameter
@@ -426,7 +486,8 @@ for ( mf in model.files ) {
                      # dividend received after having sold position
                      #addAcctTxn(acct.name,
                      #            ti$date,
-                     #            TxnType = "Additions",                                                                 #                       ti$ie.amount,
+                     #            TxnType = "Additions",                                                  
+                     #                       ti$ie.amount,
                      #            verbose=verbose)
                      message(paste("Ignoring cash distribution",
                                    ti$date,
@@ -457,7 +518,8 @@ for ( mf in model.files ) {
                      # distribution received after having sold position
                      #addAcctTxn(acct.name,
                      #            ti$date,
-                     #            TxnType = "Additions",                                               #                       amount,
+                     #            TxnType = "Additions",                                               
+                     #                       amount,
                      #            verbose=verbose)
                      message(paste("Ignoring capital distribution",
                                    ti$date,
@@ -477,7 +539,6 @@ for ( mf in model.files ) {
   updateAcct(acct.name)
   updateEndEq(acct.name)
   
-  
   # portfolio plot sanity check
   model.stats <- getAccount(acct.name)$portfolios$model
   ms1 <- plotModelStat(model.stats$Gross.Value,paste(model.name,"Model Stats: Gross Value"))
@@ -496,7 +557,7 @@ for ( mf in model.files ) {
   colnames(pr) <- gsub(".DailyEndEq","",colnames(pr))
   ar <- AcctReturns(acct.name)
   cr <- cumprod(1+pr)
-
+  
   # portfolio return status
   pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
   colnames(pm) <- c("Model")
@@ -581,7 +642,7 @@ for ( mf in model.files ) {
   message(paste("Working",model.name,"buy-hold basket comparison"))
   buyhold.equal.equity <- init.eq / length(model.basket)
   buyhold.equal.weights <- rep(1.0 / length(model.basket),length(model.basket))
-
+  
   for ( ticker in model.basket ) {
     history <- get(ticker)
     price <- as.numeric(Cl(history[switch.date,]))
@@ -613,7 +674,7 @@ for ( mf in model.files ) {
   bhp$Total <- rowSums(bhp, na.rm=TRUE)
   bhp$Cumulative <- cumprod(1+bhp$Total)
   bhp.epl <- dailyEqPL("buyhold.port")
-
+  
   # basket component cumulative returns  
   bhc.df <- data.frame(bhc) %>% mutate(Date=index(bhc))
   gf <- bhc.df %>% gather(Symbol,Return,-Date)
@@ -640,10 +701,9 @@ for ( mf in model.files ) {
   bh.max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
   
   # combined active model and buy-hold cumulative return
-  xc.df <- bind_cols(data.frame(pm$Cumulative),
-                  data.frame(bhp$Cumulative),
-                  data.frame(index(pm$Cumulative)))
-  colnames(xc.df) <- c(model.name,"Buy-Hold","Date")
+  xc <- merge(benchmark.cumulatives,pm$Cumulative,bhp$Cumulative)
+  colnames(xc) <- c("Benchmark",model.name,"Buy-Hold")
+  xc.df <- data.frame(xc,Date=index(xc))
   gf <- xc.df %>% gather(Portfolio,Return,-Date)
   p <- ggplot(gf,aes(x=Date,y=Return,color=Portfolio)) +
     geom_line() +
@@ -653,16 +713,38 @@ for ( mf in model.files ) {
     ggtitle(paste(model.name,"vs. Buy-Hold Basket Cumulative Return"))
   direct.label(p)
   
+  # combined active model and buy-hold drawdowns
+  xd <- na.omit(na.locf(drawdowns(timeSeries(merge(benchmark.returns,pm$Total,bhp$Total)))))
+  colnames(xd) <- c("Benchmark",model.name,"Buy-Hold")
+  xd.df <- data.frame(xd,Date=index(xd))
+  gf <- xd.df %>% gather(Portfolio,Drawdown,-Date)
+  p <- ggplot(gf,aes(x=Date,y=Drawdown,color=Portfolio)) +
+    geom_line() +
+    xlab(NULL) +
+    ylab("Drawdown") +
+    guides(color=FALSE) +
+    ggtitle(paste(model.name,"vs. Buy-Hold Basket Drawdowns"))
+  direct.label(p, visualcenter)
+  
+  # save model performance results to scorecard output
+  scorecard.out[model.name,'Actual.CAGR'] <- annual.percent
+  scorecard.out[model.name,'Actual.MDD'] <- max.drawdown.percent
+  scorecard.out[model.name,'Actual.Sortino'] <- sortino.ratio
+  scorecard.out[model.name,'Actual.Calmar'] <- calmar.ratio
 }
 
-
-# applicable to every model
-# benchmark returns
-ignore <- getAndAdjust(benchmark.symbol,init.date,switch.date)
-benchmark.returns <- diff(Cl(log(get(benchmark.symbol))))[-1,]
-colnames(benchmark.returns) <- "Benchmark"
-benchmark.cumulatives <- cumprod(1+benchmark.returns)
+# scorecard rankings for activated and candidate
+actual.rank <- scorecard.out %>% 
+  filter(Status %in% c('activated','candidate')) %>% 
+  mutate(Actual.CAGR.R=dense_rank(desc(Actual.CAGR))) %>%
+  mutate(Actual.MDD.R=dense_rank(Actual.MDD)) %>%
+  mutate(Actual.Calmar.R=dense_rank(desc(Actual.Calmar))) %>%
+  mutate(Actual.Sortino.R=dense_rank(desc(Actual.Sortino))) %>%
+  select(ModelID,Actual.CAGR.R,Actual.MDD.R,Actual.Calmar.R,Actual.Sortino.R)
+rownames(actual.rank) <- actual.rank$ModelID
+scorecard.ranked <- left_join(scorecard.out,actual.rank,by='ModelID')
+scorecard.ranked[is.na(scorecard.ranked)] <- ''
 
 # benchmark candlestick chart
-ggCandles(get(benchmark.symbol),title_param="Benchmark")
+# ggCandles(get(benchmark.symbol),title_param="Benchmark")
 

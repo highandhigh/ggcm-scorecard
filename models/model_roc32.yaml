@@ -17,6 +17,10 @@ backtest:
   initeq: 1000000
   transaction: -4.95
   benchmark: SPY
+  cagr: 8.1
+  mdd: 19.0
+  sortino: 3.2
+  calmar: 7.9
     
 history:
   - sample: "2016-03-01"

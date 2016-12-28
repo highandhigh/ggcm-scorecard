@@ -1,0 +1,28 @@
+# CRV model config
+model: "CRV02"
+version: "0.1"
+partner: "bluebeer"
+
+config:
+  lookback: 125
+  rebalance: none
+  trailstop: 0.10
+  basket: [XLB, XLE, XLF, XLI, XLK, XLP, XLV, XLV, XLY]
+    
+backtest:
+  start: 2003-12-01
+  stop: 2016-12-01 # out-of-sample start
+  initeq: 1000000
+  transaction: -4.95
+  benchmark: SPY
+  cagr: 8.0
+  mdd: 25.0
+  sortino: 4.0
+  calmar: 7.0
+    
+history:
+  - sample: "2016-12-01"
+    cagr: 8.0
+    mdd: 25.0
+    sortino: 4.0
+    calmar: 7.0

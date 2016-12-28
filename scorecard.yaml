@@ -7,10 +7,12 @@ table:
     - id: "3ROC 13"
       partner: "Partner 3"
       config: "model_roc13.yaml"
+      live: "2016-08-05"
       
     - id: "RSO 44"
       partner: "Partner 4"
       config: "model_rso44.yaml"
+      live: "2016-08-05"
       
   - status: candidate
     models:
@@ -20,6 +22,9 @@ table:
   
   - status: deactivated
     models:
+    - id: "CRV 01"
+      partner: "Partner 3"
+      config: "model_crv02.yaml"
     
   - status: retired
     models:
