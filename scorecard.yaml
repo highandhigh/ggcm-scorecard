@@ -1,6 +1,5 @@
 version: 0.1
 vintage: "2016-12-01"
-refresh: "2016-12-05"
 
 table:
   - status: activated

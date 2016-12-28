@@ -20,17 +20,17 @@ invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                   "ggplot2",
                                                   "directlabels",
                                                   "scales"
-                                                  ),
-                                                library,
-                                                warn.conflicts=FALSE, 
-                                                character.only=TRUE,
-                                                verbose=FALSE)))
+),
+library,
+warn.conflicts=FALSE, 
+character.only=TRUE,
+verbose=FALSE)))
 invisible(suppressMessages(lapply(c("lib/checkBlotter.R",
                                     "lib/emit.R",
                                     "lib/prettyStats.R",
                                     "lib/ggutil.R"
-                                    ),
-                                  source,verbose=FALSE)))
+),
+source,verbose=FALSE)))
 
 options(stringsAsFactors=FALSE)
 options(getSymbols.auto.assign=FALSE)
@@ -309,18 +309,18 @@ for ( i in 1:nrow(ti.df) ) {
                  # amount is positive
                  qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
                  if ( qty > 0 ) {
-                 #dps <- ti$ie.amount / qty
-                 #addDiv(Portfolio=port.name, 
-                 #        Symbol=ti$ticker_symbol, 
-                 #        TxnDate=ti$date,
-                 #        DivPerShare=dps,
-                 #        TxnFees=0, 
-                 #        verbose=verbose)
-                 message(paste("Ignoring cash distribution",
-                               ti$date,
-                               ti$ticker_symbol,
-                               dollar(ti$ie.amount),
-                               qty))
+                   #dps <- ti$ie.amount / qty
+                   #addDiv(Portfolio=port.name, 
+                   #        Symbol=ti$ticker_symbol, 
+                   #        TxnDate=ti$date,
+                   #        DivPerShare=dps,
+                   #        TxnFees=0, 
+                   #        verbose=verbose)
+                   message(paste("Ignoring cash distribution",
+                                 ti$date,
+                                 ti$ticker_symbol,
+                                 dollar(ti$ie.amount),
+                                 qty))
                  } else {
                    # dividend received after having sold position
                    #addAcctTxn(acct.name,
@@ -340,18 +340,18 @@ for ( i in 1:nrow(ti.df) ) {
                  qty <- getPosQty(port.name,ti$ticker_symbol,ti$date)
                  amount <- abs(ti$ie.amount)
                  if ( qty > 0 ) {
-                  # dps <- amount / qty
-                  # addDiv(Portfolio=port.name, 
-                  #        Symbol=ti$ticker_symbol, 
-                  #        TxnDate=ti$date,
-                  #        DivPerShare=dps,
-                  #        TxnFees=0, 
-                  #        verbose=verbose)
+                   # dps <- amount / qty
+                   # addDiv(Portfolio=port.name, 
+                   #        Symbol=ti$ticker_symbol, 
+                   #        TxnDate=ti$date,
+                   #        DivPerShare=dps,
+                   #        TxnFees=0, 
+                   #        verbose=verbose)
                    message(paste("Ignoring capital distribution",
-                           ti$date,
-                           ti$ticker_symbol,
-                           dollar(amount),
-                           qty))
+                                 ti$date,
+                                 ti$ticker_symbol,
+                                 dollar(amount),
+                                 qty))
                  } else {
                    # distribution received after having sold position
                    #addAcctTxn(acct.name,
@@ -359,15 +359,15 @@ for ( i in 1:nrow(ti.df) ) {
                    #            TxnType = "Additions",                                               #                       amount,
                    #            verbose=verbose)
                    message(paste("Ignoring capital distribution",
-                           ti$date,
-                           ti$ticker_symbol,
-                           dollar(amount)))
+                                 ti$date,
+                                 ti$ticker_symbol,
+                                 dollar(amount)))
                  }
                },
                function(ti) { 
                  warning(paste("TI switch did not match",ti$ie.type)) 
-                 }
-               ) # switch
+               }
+  ) # switch
   rv(ti)
 }
 
@@ -479,7 +479,7 @@ formatted.stats <- formattable(stats,list(
 ))
 for ( fsn in names(formatted.stats) )
   formatted.stats[,fsn] = accounting(stats[,fsn],digits=0)
-  
+
 
 
 # model performance ratios
@@ -505,5 +505,4 @@ max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
 #                              digits=3)
 # textplot(drawdowns,wrap.colnames=16,wrap.rownames=30)
 # title(paste("Top Model Drawdowns Since",switch.date))
-
 

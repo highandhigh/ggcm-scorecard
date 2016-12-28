@@ -26,3 +26,38 @@ Candidate	ROC TS3	Partner 5	2016-03-16	10.5%	25.5%	1.8	6.5	2016-11-12	10.5%	6	25
 # [3] "INSTRUMENT_BUY"                    "INSTRUMENT_DISTRIBUTION_CASH"            
 # [5] "INSTRUMENT_SELL"                   "INSTRUMENT_SELL_COMMISSION_AND_FEE"      
 # [7] "INSTRUMENT_COVER_SHORT_SALE"       "INSTRUMENT_DISTRIBUTION_RETURN_OF_CAPITAL"
+
+Algorithm
+
+Read Bivio into transactions
+Read scorecard models YAML
+* identifies all current model file names
+* identifies model status; active, candidate, retired
+For each model file name
+* read the individual file name YAML
+* find the historical model performance statistics. static
+* find the model start date from the scorecard
+* find the tickers involved in the model
+* make a list of the ticker XTS objects
+* for each ticker XTS
+    * trim the XTS to start at model start date
+    * bind computed daily return column on adjusted close price
+    * find all transactions for the ticker at or after the start date
+    * initialize position column with NA
+    * initialize applied daily return with 0
+    * bind the position shares onto the price timeline as a column, last value carry forward
+    * bind the transaction dollar amount onto the price timeline as a column
+    * compute applied daily return, daily dollar amount
+    * compute cumulative return, dollar amount
+    * then what?  
+* create a model XTS
+    * bind adjusted close columns from all tickers 
+    * bind daily return dollars from all tickers
+    * initialize a total model daily return dollars column
+    * compute cumulative return, dollar amount
+    * compute running sortino ratio, calmar ratio
+    * compute max drawdown
+    * compute annualized return
+    * compute total return
+    * insert into scorecard
+Emit the scorecard data table

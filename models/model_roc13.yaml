@@ -1,5 +1,5 @@
 # 3ROC model config
-model: "roc3"
+model: "3ROC13"
 version: "0.1"
 partner: "ghost"
 
