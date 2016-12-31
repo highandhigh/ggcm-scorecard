@@ -748,3 +748,6 @@ scorecard.ranked[is.na(scorecard.ranked)] <- ''
 # benchmark candlestick chart
 # ggCandles(get(benchmark.symbol),title_param="Benchmark")
 
+# performance summary tryptich
+# ggChartsPerformanceSummary(bhr,"Buy-Hold Components")
+
