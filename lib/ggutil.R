@@ -334,18 +334,19 @@ ggChartsPerformanceSummary <- function(r.xts,ptitle="",geometric=TRUE) {
   }))
 
   # tagged dataframes to facilitate facet grid subsetting
-  pc <- data.frame(Date=index(c.xts),Plot="Cumulative Returns",c.xts)
-  pr <- data.frame(Date=index(r.xts),Plot="Period Returns",r.xts)
-  pd <- data.frame(Date=index(d.xts),Plot="Drawdowns",d.xts)
+  pc <- data.frame(Date=index(c.xts),Plot="Cumulative",c.xts,stringsAsFactors = FALSE)
+  pr <- data.frame(Date=index(r.xts),Plot="Returns",r.xts,stringsAsFactors = FALSE)
+  pd <- data.frame(Date=index(d.xts),Plot="Drawdowns",d.xts,stringsAsFactors = FALSE)
   pf <- bind_rows(pc,pr,pd) %>% gather(Series,Value,3:ncol(pr)) %>% na.omit
   
   # facet plot
   p <- ggplot(pf,aes(x=Date,y=Value,color=Series,fill=Series)) +
-    geom_line(data=subset(pf,Plot=="Cumulative Returns")) +
-    geom_bar(data=subset(pf,Plot=="Period Returns"),stat="identity",position="dodge") +
-    geom_smooth(data=subset(pf,Plot=="Period Returns"),method="lm") +
+    geom_line(data=subset(pf,Plot=="Cumulative")) +
+    geom_bar(data=subset(pf,Plot=="Returns"),stat="identity",position="dodge") +
+    geom_smooth(data=subset(pf,Plot=="Returns"),method="lm") +
     geom_line(data=subset(pf,Plot=="Drawdowns")) +
     facet_grid(Plot~.,scales="free_y",space="free_y") +
-    ggtitle(ptitle) + xlab(NULL) + ylab(NULL)
+    ggtitle(ptitle) + xlab(NULL) + ylab(NULL) +
+    theme(strip.text.y = element_text(size=8))
   return(p)
 }
