@@ -19,7 +19,8 @@ invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                   "PerformanceAnalytics",
                                                   "ggplot2",
                                                   "directlabels",
-                                                  "scales"
+                                                  "scales",
+                                                  "formattable"
 ),
 library,
 warn.conflicts=FALSE, 
@@ -28,7 +29,9 @@ verbose=FALSE)))
 invisible(suppressMessages(lapply(c("lib/checkBlotter.R",
                                     "lib/emit.R",
                                     "lib/prettyStats.R",
-                                    "lib/ggutil.R"
+                                    "lib/ggutil.R",
+                                    "lib/position.R",
+                                    "model-update-rm13-roc.R"
 ),
 source,verbose=FALSE)))
 
@@ -109,7 +112,7 @@ getAndAdjust <- function(ticker,init_date,switch_date) {
   if ( has.Ad(dx) ) {
     dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
   }
-  dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
+  #dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
   colnames(dx) <- gsub(paste(ticker,'.',sep=''),"",colnames(dx))
   assign(ticker,dx,envir=.GlobalEnv) # put back into global environment
 }
@@ -138,7 +141,7 @@ mdf <- xmlToDataFrame(mns)
 # trim deceased ticker dates from the ticker names; may need them later
 ins <- getNodeSet(doc,"//instrument_list/*[not (instrument_valuation)]")
 idf <- xmlToDataFrame(ins)
-bivio_tickers <- unique((idf %>% filter(instrument_type=="STOCK"))$ticker_symbol)
+bivio_tickers <- unique((idf %>% dplyr::filter(instrument_type=="STOCK"))$ticker_symbol)
 bivio_tickers <- sapply(strsplit(bivio_tickers,'-',fixed=TRUE),first)
 
 
@@ -171,8 +174,8 @@ tdf <- bind_rows(lapply(tns,function(x){
 
 # transactions, instruments, non-NA amounts, with tickers and names attached
 ti.df <- left_join(tdf %>% 
-                     filter(source_class=="INSTRUMENT") %>% 
-                     filter(is.na(ie.amount)==FALSE),
+                     dplyr::filter(source_class=="INSTRUMENT") %>% 
+                     dplyr::filter(is.na(ie.amount)==FALSE),
                    idf[,c("instrument_type","name","realm_instrument_id","ticker_symbol")],
                    by=c("ie.realm_id" = "realm_instrument_id")) %>%
   select(-me.amount,-me.type,-me.tax_basis,-me.tax_category,-me.units,-me.user_id) %>%
@@ -186,7 +189,7 @@ ti.df <- ti.df[tday:nrow(ti.df),]
 # trim the capital gains records, bookkeeping not related to blotter
 `%nin%` <- Negate(`%in%`) 
 ti.df <- ti.df %>% 
-  filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
+  dplyr::filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
 
 # purge some regime overlap tickers; these had transactions after model regime start
 # 2016/08 minutes: tickers AFL, ESV, NE, QCOM, WFC and XLP to be kept, all else sell
@@ -196,7 +199,7 @@ ignore_tickers <- c('AFL','BWXT','COH','EMC','EMN','ESV','FL',
                     'FOSL','GILD','GM','GS','HYLD','MRK','NE',
                     'NOV','NSC','PGNPQ','QCOM','RYU','SLB','T','TROW',
                     'TRV','WFC','XLRE')
-ti.df <- ti.df %>% filter(ticker_symbol %nin% ignore_tickers)
+ti.df <- ti.df %>% dplyr::filter(ticker_symbol %nin% ignore_tickers)
 
 # fetch then adjust ticker historical data
 # remaining symbols are likely model basket elements
@@ -210,7 +213,7 @@ for ( mt in transaction_tickers ) {
 }  
 
 # final purge of transactions, eliminate options transactions (for now)
-ti.df <- ti.df %>% filter(ticker_symbol %in% model_tickers )
+ti.df <- ti.df %>% dplyr::filter(ticker_symbol %in% model_tickers )
 
 # clear the blotter account and portfolios
 if (!exists(".blotter"))
@@ -222,7 +225,7 @@ initPortf(name=port.name, model_tickers, initDate=init.date, currency="USD")
 initAcct(name=acct.name, portfolios=c(port.name), initDate=init.date, initEq=init.eq)
 
 # setup blotter instruments
-currency("USD")
+FinancialInstrument::currency("USD")
 for ( mt in model_tickers) {
   stock(mt,currency="USD",multiplier=1)
 }
@@ -403,28 +406,32 @@ as1
 pr <- PortfReturns(acct.name,Portfolios=port.name,period="daily") # all portfolios
 colnames(pr) <- gsub(".DailyEndEq","",colnames(pr))
 ar <- AcctReturns(acct.name)
+colnames(ar) <- "Account"
 cr <- cumprod(1+pr)
 
 # benchmark returns
 ignore <- getAndAdjust(benchmark.symbol,init.date,switch.date)
+# assign(get(benchmark.symbol),benchmark.symbol) # already trimmed
 benchmark.returns <- diff(Cl(log(get(benchmark.symbol))))[-1,]
 colnames(benchmark.returns) <- "Benchmark"
 benchmark.cumulatives <- cumprod(1+benchmark.returns)
 
 # portfolio return status
-pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
-colnames(pm) <- c("Model")
-pm$Total <- rowSums(pm, na.rm=TRUE)
-pm$Cumulative <- cumprod(1+pm$Total)
+#pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
+#colnames(pm) <- c("Model")
+pm <- pr
+pm$Actual <- rowSums(pm, na.rm=TRUE)
+pm$Cumulative <- cumprod(1+pm$Actual)
 pm.epl <- dailyEqPL(port.name)
 
 # individual component prices, drawdown, P&L
 for ( mt in model_tickers) {
-  print(chart.Posn(port.name,mt))
+  # print(chart.Posn(port.name,mt))
+  print(chart.Position(port.name,mt))
 }
 
 # benchmark candlestick chart
-ggCandles(get(benchmark.symbol),title_param="Benchmark")
+#ggCandles(get(benchmark.symbol),title_param="Benchmark")
 
 # component return plots
 pr.df <- data.frame(pr) %>% mutate(Date=index(pr))
@@ -433,13 +440,14 @@ ggplot(gf,aes(x=Date,y=Return,color=Symbol)) +
   geom_line() +
   facet_wrap(~Symbol,nrow=3,scales="fixed") +
   xlab(NULL) +
+  ylab("Realized Return") +
   guides(color=FALSE)
 ggplot(gf,aes(x=Return,fill=Symbol,color=Symbol)) +
   geom_histogram(binwidth=0.01) +
   geom_density() +
   guides(fill=FALSE,color=FALSE) +
   facet_wrap(~Symbol,nrow=3,scales="fixed") +
-  ylab("Frequency") +
+  ylab("Realized Return Frequency") +
   xlab(paste("Daily Returns",min(gf$Date),"to",max(gf$Date),sep=' '))
 
 # component cumulative returns
@@ -448,6 +456,7 @@ gf <- cr.df %>% gather(Symbol,Return,-Date)
 p <- ggplot(gf,aes(x=Date,y=Return,color=Symbol)) +
   geom_line() +
   xlab(NULL) +
+  ylab("Realized Return") +
   guides(color=FALSE) +
   ggtitle("Model Component Cumulative Return")
 direct.label(p)
@@ -479,30 +488,17 @@ formatted.stats <- formattable(stats,list(
 ))
 for ( fsn in names(formatted.stats) )
   formatted.stats[,fsn] = accounting(stats[,fsn],digits=0)
+formatted.stats
 
 
+# actual performance ratios
+annual.percent <- as.numeric(Return.annualized(pm$Actual)) * 100 # percent
+calmar.ratio <- as.numeric(CalmarRatio(pm$Actual)) # ratio
+sortino.ratio <- as.numeric(SortinoRatio(pm$Actual,MAR=0.10/12)) # ratio
+max.drawdown.percent <- maxDrawdown(pm$Actual) * 100 # percent
 
-# model performance ratios
-annual.percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
-calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
-sortino.ratio <- as.numeric(SortinoRatio(pm$Model,MAR=0)) # ratio
-max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
-
-
-
-# downside risk
-# downrisk <- table.DownsideRisk(cbind(pm$Model,benchmark.returns),
-#                                Rf=.01/252,
-#                                MAR=.1/252,
-#                                digits=2)
-# textplot(downrisk,wrap.colnames=16,wrap.rownames = 30)
-# title(paste("Model and Benchmark Downside Risk Since",switch.date))
-# title(sub="Confidence interval 95%")
-
-# chart.Drawdown(pm$Model) ## TODO do this with ggplot2
-# drawdowns <- table.Drawdowns(pm$Model,
-#                              top=5,
-#                              digits=3)
-# textplot(drawdowns,wrap.colnames=16,wrap.rownames=30)
-# title(paste("Top Model Drawdowns Since",switch.date))
-
+# theoretical performance out of sample
+mrv <- model_update_rm13_roc()
+at.returns <- merge(pm$Actual,mrv$theoretical.returns,benchmark.returns)
+# colnames(at.returns) <- c("Actual","Theoretical","Benchmark")
+ggChartsPerformanceSummary2(at.returns,ptitle="Theoretical vs. Actual")

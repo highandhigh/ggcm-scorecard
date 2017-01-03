@@ -1,0 +1,119 @@
+---
+title: "Model Competition - Status"
+author: "Great Gray Capital Management LLP"
+date: "January 2, 2017"
+output:
+  beamer_presentation:
+    colortheme: ggcmowl
+    fonttheme: structurebold
+    theme: Ggcm
+    # toc: true
+    # toc_depth: 2
+    # number_sections: true
+    fig_width: 7
+    fig_height: 6
+    fig_caption: false
+    slide_level: 2
+
+---
+
+
+# Introduction
+
+## Syopsis
+
+We have several models backtested and validated, but we have money invested
+in only a few of them.  Each month, how do we decide which models to
+activate or deactivate?   We discussed this in Dallas. 
+
+## Progress
+
+- Much progress has been made in its implementation toward automation. 
+
+
+
+# Competition
+
+
+## Metrics
+
+* CAGR percentage, monthly returns
+* Maximum drawdown MDD magnitude percentage, any peak to trough
+* Sortino ratio, $S = (R-T) / D_R$, excess return over downside deviation
+* Calmar ratio, $C = CAGR / MDD$, monthly with 36-month lookback
+
+## Performance Tracking
+
+* Compute actual metric values for all activated models
+* Compute out-of-sample metric values for all other models
+* Track in performance book
+    + Actual vs. in-sample expected metrics
+    + Out-of-sample vs. in-sample expected metrics
+
+
+
+## Activation
+
+* _Activation_ refers to placing a model into portfolio; it becomes investable but may have zero weighting
+* _Deactivation_ refers to removing a model from portfolio, moving from activated tier to candidate tier; it continues tracking but is not invested
+
+----
+
+![pool](images/flow-)
+
+
+## Relegation and Promotion
+
+----
+
+Model promotion from candidate to activated
+
+![promo](images/flow-promo.png)
+
+----
+
+Model relegation from activated to candidate
+
+![pool](images/flow-releg-go.png)
+
+
+----
+
+Model relegation from candidate to deactivated
+
+![pool](images/flow-releg-or.png)
+
+----
+
+Model retirement
+
+![pool](images/flow-retire.png)
+
+
+
+
+
+
+# Recommendation
+
+## High-Level Procedure
+
+* Monthly assessment of activated models
+* Monthly assessment of candidate models
+* Monthly assessment of deactivated models
+* Decision to promote, relegate or retire models
+* Decision of allocation across activated models and cash
+
+
+## Recommendation
+
+* Scorecard running six-month scores for each model
+    * CAGR rank, Sortino Ratio rank, Calmar Ratio rank
+    * $\sigma^2_\mathrm{SR}$ deviation from backtest
+* Select top $N$ models for activation, weighted by Calmar Ratio
+* Within each mnodel, weight funds by model-specific method
+
+
+## References
+
+* None

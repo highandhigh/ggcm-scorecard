@@ -15,18 +15,18 @@ monthlyAd <- function(x){
 }
 
 ##### monthlyReturns function #####
-monthlyReturns <- function(symbols) {
+monthlyReturns <- function(symbols,env=.GlobalEnv) {
   # The function takes a character vector of symbols loaded into
   # the environment and returns an xts object of simple returns
   # Currently this is only for prepping monthly data
   
   # symbols : character vector of symbols
   
-  ROC(x = monthlyPrices(symbols), n = 1, type = "discrete", na.pad = TRUE)
+  ROC(x = monthlyPrices(symbols,env=env), n = 1, type = "discrete", na.pad = TRUE)
 }
 
 ##### monthlyPrices function #####
-monthlyPrices <- function(symbols) {
+monthlyPrices <- function(symbols,env=.GlobalEnv) {
   # The function takes a character vector of symbols loaded into
   # the environment and returns an xts object of Adjusted close prices
   # Currently this is only for prepping monthly data
@@ -36,7 +36,7 @@ monthlyPrices <- function(symbols) {
   
   list.sym <- list()
   for(i in 1:length(symbols)) {
-    list.sym[[symbols[i]]] <- get(symbols[i])
+    list.sym[[symbols[i]]] <- get(symbols[i],envir=env)
   }
   
   do.call(merge, lapply(list.sym, monthlyAd))

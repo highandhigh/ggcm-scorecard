@@ -13,7 +13,7 @@ config:
     
 backtest:
   start: 2004-12-01
-  stop: 2016-09-14 # out-of-sample start
+  stop: 2016-08-01 # out-of-sample start
   initeq: 1000000
   transaction: -4.95
   benchmark: SPY

@@ -227,7 +227,7 @@ plotPosition <- function (Portfolio, Symbol, Dates = NULL, ..., TA = NULL)
 # trim deceased ticker dates from the ticker names; may need them later
 ins <- getNodeSet(doc,"//instrument_list/*[not (instrument_valuation)]")
 idf <- xmlToDataFrame(ins)
-bivio_tickers <- unique((idf %>% filter(instrument_type=="STOCK"))$ticker_symbol)
+bivio_tickers <- unique((idf %>% dplyr::filter(instrument_type=="STOCK"))$ticker_symbol)
 bivio_tickers <- sapply(strsplit(bivio_tickers,'-',fixed=TRUE),first)
 
 
@@ -261,8 +261,8 @@ tdf <- bind_rows(lapply(tns,function(x){
 
 # transactions, instruments, non-NA amounts, with tickers and names attached
 ti.df <- left_join(tdf %>% 
-                     filter(source_class=="INSTRUMENT") %>% 
-                     filter(is.na(ie.amount)==FALSE),
+                     dplyr::filter(source_class=="INSTRUMENT") %>% 
+                     dplyr::filter(is.na(ie.amount)==FALSE),
                    idf[,c("instrument_type","name","realm_instrument_id","ticker_symbol")],
                    by=c("ie.realm_id" = "realm_instrument_id")) %>%
   select(-me.amount,-me.type,-me.tax_basis,-me.tax_category,-me.units,-me.user_id) %>%
@@ -276,7 +276,7 @@ ti.df <- ti.df[tday:nrow(ti.df),]
 # trim the capital gains records, bookkeeping not related to blotter
 `%nin%` <- Negate(`%in%`) 
 ti.df <- ti.df %>% 
-  filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
+  dplyr::filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
 
 # purge some regime overlap tickers; these had transactions after model regime start
 # 2016/08 minutes: tickers AFL, ESV, NE, QCOM, WFC and XLP to be kept, all else sell
@@ -286,7 +286,7 @@ ignore.tickers <- c('AFL','BWXT','COH','EMC','EMN','ESV','FL',
                     'FOSL','GILD','GM','GS','HYLD','MRK','NE',
                     'NOV','NSC','PGNPQ','QCOM','RYU','SLB','T','TROW',
                     'TRV','WFC','XLRE')
-ti.df <- ti.df %>% filter(ticker_symbol %nin% ignore.tickers)
+ti.df <- ti.df %>% dplyr::filter(ticker_symbol %nin% ignore.tickers)
 transaction.tickers <- unique(ti.df$ticker_symbol)
 
 # benchmark returns applicable to every model
@@ -367,7 +367,7 @@ for ( mf in model.files ) {
   ignore <- getAndAdjust(model.basket,init.date,switch.date)
   
   # final purge of transactions, eliminate non-basket transactions
-  transactions.df <- ti.df %>% filter(ticker_symbol %in% model.basket )
+  transactions.df <- ti.df %>% dplyr::filter(ticker_symbol %in% model.basket )
   
   # clear the blotter account and portfolios
   if (!exists(".blotter"))
@@ -559,10 +559,11 @@ for ( mf in model.files ) {
   cr <- cumprod(1+pr)
   
   # portfolio return status
-  pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
-  colnames(pm) <- c("Model")
-  pm$Total <- rowSums(pm, na.rm=TRUE)
-  pm$Cumulative <- cumprod(1+pm$Total)
+  # pm <- Return.portfolio(pr,wealth.index=FALSE,geometric=FALSE)
+  pm <- pr
+  # colnames(pm) <- c("Model")
+  pm$Actual <- rowSums(pm, na.rm=TRUE)
+  pm$Cumulative <- cumprod(1+pm$Actual)
   pm.epl <- dailyEqPL(port.name)
   
   # individual component prices, drawdown, P&L
@@ -633,10 +634,10 @@ for ( mf in model.files ) {
   print(formatted.stats)
   
   # model performance ratios
-  annual.percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
-  calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
-  sortino.ratio <- as.numeric(SortinoRatio(pm$Model,MAR=0)) # ratio
-  max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
+  annual.percent <- as.numeric(Return.annualized(pm$Actual)) * 100 # percent
+  calmar.ratio <- as.numeric(CalmarRatio(pm$Actual)) # ratio
+  sortino.ratio <- as.numeric(SortinoRatio(pm$Actual,MAR=0)) # ratio
+  max.drawdown.percent <- maxDrawdown(pm$Actual) * 100 # percent
   
   # buy-hold basket comparison
   message(paste("Working",model.name,"buy-hold basket comparison"))
@@ -669,10 +670,11 @@ for ( mf in model.files ) {
   colnames(bhr) <- gsub(".DailyEndEq","",colnames(bhr))
   bhc <- cumprod(1+bhr)
   
-  bhp <- Return.portfolio(bhr,wealth.index=FALSE,geometric=FALSE)
-  colnames(bhp) <- c("Buy-Hold")
-  bhp$Total <- rowSums(bhp, na.rm=TRUE)
-  bhp$Cumulative <- cumprod(1+bhp$Total)
+  # bhp <- Return.portfolio(bhr,wealth.index=FALSE,geometric=FALSE)
+  bhp <- bhr
+  # colnames(bhp) <- c("Buy-Hold")
+  bhp$BuyHold <- rowSums(bhp, na.rm=TRUE)
+  bhp$Cumulative <- cumprod(1+bhp$BuyHold)
   bhp.epl <- dailyEqPL("buyhold.port")
   
   # basket component cumulative returns  
@@ -695,36 +697,39 @@ for ( mf in model.files ) {
     ggtitle(paste(model.name,"Buy-Hold Equal-Weight Basket Cumulative Return"))
   print(p)
   
-  bh.annual.percent <- as.numeric(Return.annualized(pm$Model)) * 100 # percent
-  bh.calmar.ratio <- as.numeric(CalmarRatio(pm$Model)) # ratio
-  bh.sortino.ratio <- as.numeric(SortinoRatio(pm$Model,MAR=0)) # ratio
-  bh.max.drawdown.percent <- maxDrawdown(pm$Model) * 100 # percent
+  bh.annual.percent <- as.numeric(Return.annualized(bhp$BuyHold)) * 100 # percent
+  bh.calmar.ratio <- as.numeric(CalmarRatio(bhp$BuyHold)) # ratio
+  bh.sortino.ratio <- as.numeric(SortinoRatio(bhp$BuyHold,MAR=0.1/12)) # ratio
+  bh.max.drawdown.percent <- maxDrawdown(bhp$BuyHold) * 100 # percent
   
   # combined active model and buy-hold cumulative return
-  xc <- merge(benchmark.cumulatives,pm$Cumulative,bhp$Cumulative)
-  colnames(xc) <- c("Benchmark",model.name,"Buy-Hold")
-  xc.df <- data.frame(xc,Date=index(xc))
-  gf <- xc.df %>% gather(Portfolio,Return,-Date)
-  p <- ggplot(gf,aes(x=Date,y=Return,color=Portfolio)) +
-    geom_line() +
-    xlab(NULL) +
-    ylab("Portfolio Return") +
-    guides(color=FALSE) +
-    ggtitle(paste(model.name,"vs. Buy-Hold Basket Cumulative Return"))
-  direct.label(p)
+  xr <- merge(benchmark.returns,bhp$BuyHold,pm$Actual)
+  #xc <- merge(benchmark.cumulatives,pm$Cumulative,bhp$Cumulative)
+  #colnames(xc) <- c("Benchmark",model.name,"Buy-Hold")
+  #xc.df <- data.frame(xc,Date=index(xc))
+  #gf <- xc.df %>% gather(Portfolio,Return,-Date)
+  # p <- ggplot(gf,aes(x=Date,y=Return,color=Portfolio)) +
+  #   geom_line() +
+  #   xlab(NULL) +
+  #   ylab("Portfolio Return") +
+  #   guides(color=FALSE) +
+  #   ggtitle(paste(model.name,"vs. Buy-Hold Basket Cumulative Return"))
+  # direct.label(p)
+  p <- ggChartsPerformanceSummary2(xr,ptitle=paste(model.name,"vs.","Buy-Hold Basket"))
+  p
   
   # combined active model and buy-hold drawdowns
-  xd <- na.omit(na.locf(drawdowns(timeSeries(merge(benchmark.returns,pm$Total,bhp$Total)))))
-  colnames(xd) <- c("Benchmark",model.name,"Buy-Hold")
-  xd.df <- data.frame(xd,Date=index(xd))
-  gf <- xd.df %>% gather(Portfolio,Drawdown,-Date)
-  p <- ggplot(gf,aes(x=Date,y=Drawdown,color=Portfolio)) +
-    geom_line() +
-    xlab(NULL) +
-    ylab("Drawdown") +
-    guides(color=FALSE) +
-    ggtitle(paste(model.name,"vs. Buy-Hold Basket Drawdowns"))
-  direct.label(p, visualcenter)
+  # xd <- na.omit(na.locf(drawdowns(timeSeries(merge(benchmark.returns,pm$Actual,bhp$BuyHold)))))
+  # colnames(xd) <- c("Benchmark",model.name,"Buy-Hold")
+  # xd.df <- data.frame(xd,Date=index(xd))
+  # gf <- xd.df %>% gather(Portfolio,Drawdown,-Date)
+  # p <- ggplot(gf,aes(x=Date,y=Drawdown,color=Portfolio)) +
+  #   geom_line() +
+  #   xlab(NULL) +
+  #   ylab("Drawdown") +
+  #   guides(color=FALSE) +
+  #   ggtitle(paste(model.name,"vs. Buy-Hold Basket Drawdowns"))
+  # direct.label(p, visualcenter)
   
   # save model performance results to scorecard output
   scorecard.out[model.name,'Actual.CAGR'] <- annual.percent
@@ -735,19 +740,22 @@ for ( mf in model.files ) {
 
 # scorecard rankings for activated and candidate
 actual.rank <- scorecard.out %>% 
-  filter(Status %in% c('activated','candidate')) %>% 
-  mutate(Actual.CAGR.R=dense_rank(desc(Actual.CAGR))) %>%
-  mutate(Actual.MDD.R=dense_rank(Actual.MDD)) %>%
-  mutate(Actual.Calmar.R=dense_rank(desc(Actual.Calmar))) %>%
-  mutate(Actual.Sortino.R=dense_rank(desc(Actual.Sortino))) %>%
-  select(ModelID,Actual.CAGR.R,Actual.MDD.R,Actual.Calmar.R,Actual.Sortino.R)
+  dplyr::filter(Status %in% c('activated','candidate')) %>% 
+  mutate(CAGR.R=dense_rank(desc(Actual.CAGR))) %>%
+  mutate(MDD.R=dense_rank(Actual.MDD)) %>%
+  mutate(Calmar.R=dense_rank(desc(Actual.Calmar))) %>%
+  mutate(Sortino.R=dense_rank(desc(Actual.Sortino))) %>%
+  select(ModelID,CAGR.R,MDD.R,Calmar.R,Sortino.R)
 rownames(actual.rank) <- actual.rank$ModelID
 scorecard.ranked <- left_join(scorecard.out,actual.rank,by='ModelID')
 scorecard.ranked[is.na(scorecard.ranked)] <- ''
 
-# benchmark candlestick chart
-# ggCandles(get(benchmark.symbol),title_param="Benchmark")
+formatted.scorecard <- formattable(scorecard.ranked,list(
+  #area(col=c(CAGR.R)) ~ normalize_bar("lightgreen",min=0,max=1),
+  #area(col=c(MDD.R)) ~ normalize_bar("lightgreen",min=0,max=1),
+  #area(col=c(Calmar.R)) ~ normalize_bar("lightgreen",min=0,max=1),
+  #area(col=c(Sortino.R)) ~ normalize_bar("lightgreen",min=0,max=1),
+  Status = color_tile("white","yellow")
+))
 
-# performance summary tryptich
-# ggChartsPerformanceSummary(bhr,"Buy-Hold Components")
 

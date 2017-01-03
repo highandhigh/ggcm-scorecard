@@ -112,186 +112,7 @@ ggChartSeries <- function(x,
   g 
 }
 
-# advanced charts.PerforanceSummary based on ggplot
-ggChartsPerformanceSummarySO <- function(rtn.obj,
-                                       geometric = TRUE,
-                                       main = "",
-                                       plot = FALSE)
-{
-  # load libraries
-  suppressPackageStartupMessages(require(ggplot2))
-  suppressPackageStartupMessages(require(scales))
-  suppressPackageStartupMessages(require(reshape))
-  suppressPackageStartupMessages(require(PerformanceAnalytics))
-  
-  # create function to clean returns if having NAs in data
-  clean.rtn.xts <- function(univ.rtn.xts.obj,na.replace = 0) {
-    univ.rtn.xts.obj[is.na(univ.rtn.xts.obj)] <- na.replace
-    univ.rtn.xts.obj
-  }
-  
-  # Create cumulative return function
-  cum.rtn <- function(clean.xts.obj, g = TRUE) {
-    x <- clean.xts.obj
-    if (g == TRUE) {
-      y <- cumprod(x + 1) - 1
-    } else {
-      y <- cumsum(x)
-    }
-    y
-  }
-  
-  # Create function to calculate drawdowns
-  dd.xts <- function(clean.xts.obj, g = TRUE) {
-    x <- clean.xts.obj
-    if (g == TRUE) {
-      y <- PerformanceAnalytics:::Drawdowns(x)
-    } else {
-      y <- PerformanceAnalytics:::Drawdowns(x,geometric = FALSE)
-    }
-    y
-  }
-  
-  # create a function to create a dataframe
-  cps.df <- function(xts.obj,geometric)
-  {
-    x <- clean.rtn.xts(xts.obj)
-    series.name <- colnames(xts.obj)[1]
-    tmp <- cum.rtn(x,geometric)
-    tmp$rtn <- x
-    tmp$dd <- dd.xts(x,geometric)
-    colnames(tmp) <- c("Index","Return","Drawdown") # names with space
-    tmp.df <- as.data.frame(coredata(tmp))
-    tmp.df$Date <- as.POSIXct(index(tmp))
-    tmp.df.long <- melt(tmp.df,id.var = "Date")
-    tmp.df.long$asset <- rep(series.name,nrow(tmp.df.long))
-    tmp.df.long
-  }
-  
-  # A conditional statement altering the plot according to the number of assets
-  if (ncol(rtn.obj) == 1)
-  {
-    # using the cps.df function
-    df <- cps.df(rtn.obj,geometric)
-    # adding in a title string if need be
-    if (main == "") {
-      title.string <- paste("Asset Performance")
-    } else {
-      title.string <- main
-    }
-    
-    gg.xts <-
-      ggplot(df, aes_string(x = "Date", y = "value", group = "variable")) +
-      facet_grid(variable ~ ., scales = "free_y", space = "fixed") +
-      geom_line(data = subset(df, variable == "Index")) +
-      geom_bar(data = subset(df, variable == "Return"), stat = "identity") +
-      geom_line(data = subset(df, variable == "Drawdown")) +
-      geom_hline(yintercept = 0, size = 0.5, colour = "black") +
-      ggtitle(title.string) +
-      theme(axis.text.x = element_text(angle = 0, hjust = 1)) +
-      scale_x_datetime(breaks = date_breaks("6 months"), labels = date_format("%m/%Y")) +
-      ylab("") +
-      xlab("")
-  }
-  else
-  {
-    # a few extra bits to deal with the added rtn columns
-    no.of.assets <- ncol(rtn.obj)
-    asset.names <- colnames(rtn.obj)
-    df <-
-      do.call(rbind,lapply(1:no.of.assets, function(x) {
-        cps.df(rtn.obj[,x],geometric)
-      }))
-    df$asset <- ordered(df$asset, levels = asset.names)
-    if (main == "") {
-      title.string <-
-        paste("Asset",asset.names[1],asset.names[2],asset.names[3],"Performance")
-    } else {
-      title.string <- main
-    }
-    
-    if (no.of.assets > 5)
-    {
-      legend.rows <- 5
-    } else {
-      legend.rows <- no.of.assets
-    }
-    
-    gg.xts <- ggplot(df, aes_string(x = "Date", y = "value")) +
-      
-      # panel layout
-      facet_grid(
-        variable ~ ., scales = "free_y", space = "fixed", shrink = TRUE, drop = TRUE, margin =
-          , labeller = label_value
-      ) + # label_value is default
-      
-      # display points for Index and Drawdown, but not for Return
-      geom_point(
-        data = subset(df, variable == c("Index","Drawdown"))
-        , aes(colour = factor(asset), shape = factor(asset)), size = 1.2, show_guide = TRUE
-      ) +
-      
-      # manually select shape of geom_point
-      scale_shape_manual(values = c(1,2,3)) +
-      
-      # line colours for the Index
-      geom_line(
-        data = subset(df, variable == "Index"), aes(colour = factor(asset)), show_guide = FALSE
-      ) +
-      
-      # bar colours for the Return
-      geom_bar(
-        data = subset(df,variable == "Return"), stat = "identity"
-        , aes(fill = factor(asset), colour = factor(asset)), position = "dodge", show_guide = FALSE
-      ) +
-      
-      # line colours for the Drawdown
-      geom_line(
-        data = subset(df, variable == "Drawdown"), aes(colour = factor(asset)), show_guide = FALSE
-      ) +
-      
-      # horizontal line to indicate zero values
-      geom_hline(yintercept = 0, size = 0.5, colour = "black") +
-      
-      # horizontal ticks
-      scale_x_datetime(breaks = date_breaks("6 months"), labels = date_format("%m/%Y")) +
-      
-      # main y-axis title
-      ylab("") +
-      
-      # main x-axis title
-      xlab("") +
-      
-      # main chart title
-      ggtitle(title.string)
-    
-    # legend
-    
-    gglegend <- guide_legend(override.aes = list(size = 3))
-    
-    gg.xts <- gg.xts + guides(colour = gglegend, size = "none") +
-      
-      # gglegend <- guide_legend(override.aes = list(size = 3), direction = "horizontal") # direction overwritten by legend.box?
-      # gg.xts <- gg.xts + guides(colour = gglegend, size = "none", shape = gglegend) + # Warning: "Duplicated override.aes is ignored"
-      
-      theme(
-        legend.title = element_blank()
-        , legend.position = c(0,1)
-        , legend.justification = c(0,1)
-        , legend.background = element_rect()
-        , legend.box = "horizontal" # not working?
-        , axis.text.x = element_text(angle = 0, hjust = 1)
-      )
-    
-  }
-  
-  #assign("gg.xts", gg.xts,envir = .GlobalEnv)
-  #if (plot == TRUE) {
-  #  plot(gg.xts)
-  #} else {
-  #}
-  return(gg.xts)
-}
+
 
 #' A ggplot version of PerformanceAnalytics performance summary charts
 #' @example Returns the ggplot object for further manipulation. 
@@ -314,7 +135,7 @@ ggChartsPerformanceSummarySO <- function(rtn.obj,
 #' @return ggplot object
 #' @author mrb
 #' 
-ggChartsPerformanceSummary <- function(r.xts,ptitle="",geometric=TRUE) {
+ggChartsPerformanceSummary3 <- function(r.xts,ptitle="",geometric=TRUE) {
   suppressPackageStartupMessages(require(dplyr))
   suppressPackageStartupMessages(require(tidyr))
   suppressPackageStartupMessages(require(magrittr))
@@ -348,5 +169,72 @@ ggChartsPerformanceSummary <- function(r.xts,ptitle="",geometric=TRUE) {
     facet_grid(Plot~.,scales="free_y",space="free_y") +
     ggtitle(ptitle) + xlab(NULL) + ylab(NULL) +
     theme(strip.text.y = element_text(size=8))
+  return(p)
+}
+
+
+#' A ggplot version of PerformanceAnalytics performance summary charts, cumulative and drawdown only.
+#' @example Returns the ggplot object for further manipulation. 
+#' - to position legend use
+#' p <- p + theme(legend.position="bottom")
+#' 
+#' - to eliminate series guide use
+#' p <- p + guides(color=FALSE,fill=FALSE)
+#' 
+#' - to use direct labels to identify series on cumulative return plot without guides
+#' require(directlabels)
+#' direct.label(p+guides(color=FALSE,fill=FALSE))
+#' 
+#' @seealso PerformanceAnalytics::charts.PerformanceSummary, 
+#' directlabels, dplyr, tidyr, magrittr, ggplot2
+#' @param r.xts an XTS object with period returns for each column; 
+#' function will compute cumulative return and drawdowns for each item
+#' @param ptitle a plot title string, default empty string
+#' @param geometric whether cumulative returns should use geometric method
+#' @return ggplot object
+#' @author mrb
+#'
+ggChartsPerformanceSummary2 <- function(r.xts,ptitle="",geometric=TRUE,drawdown.minima=NA) {
+  suppressPackageStartupMessages(require(dplyr))
+  suppressPackageStartupMessages(require(tidyr))
+  suppressPackageStartupMessages(require(magrittr))
+  suppressPackageStartupMessages(require(ggplot2))
+
+  # clean  
+  r.xts <- na.omit(na.locf(r.xts))
+  
+  # cumulative return  
+  c.xts <- if ( geometric ) {
+    cumprod(1+r.xts)
+  } else {
+    1 + cumsum(r.xts)
+  }
+  
+  # drawdowns
+  d.xts <- do.call(cbind,lapply(1:ncol(c.xts),function(j){
+    cx <- cummax(c.xts[,j])
+    dd <- c.xts[,j] / cx
+  }))
+  
+  # tagged dataframes to facilitate facet grid subsetting
+  pc <- data.frame(Date=index(c.xts),Plot="Cumulative",c.xts,stringsAsFactors = FALSE)
+  pd <- data.frame(Date=index(d.xts),Plot="Drawdowns",d.xts,stringsAsFactors = FALSE)
+  pf <- bind_rows(pc,pd) %>% gather(Series,Value,3:ncol(pc)) %>% na.omit
+  
+  mindd <- min(d.xts,na.rm=TRUE)
+  
+  # facet plot
+  p <- ggplot(pf,aes(x=Date,y=Value,color=Series,fill=Series)) +
+    geom_line(data=subset(pf,Plot=="Cumulative")) +
+    geom_line(data=subset(pf,Plot=="Drawdowns")) +
+    facet_grid(Plot~.,scales="free_y",space="free_y") +
+    ggtitle(ptitle) + xlab(NULL) + ylab(NULL) +
+    theme(strip.text.y = element_text(size=10))
+  if ( ! is.na(drawdown.minima) ) {
+    p <- p + geom_hline(aes(yintercept=mindd),
+                        data=subset(pf,Plot=="Drawdowns"),
+                        color=drawdown.minima,
+                        linetype="dashed")
+  }
   return(p)
 }
