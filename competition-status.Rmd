@@ -1,5 +1,5 @@
 ---
-title: "Model Competition - Status"
+title: "Model Competition - Status Report"
 author: "Great Gray Capital Management LLP"
 date: "January 2, 2017"
 output:
@@ -22,18 +22,43 @@ output:
 
 ## Syopsis
 
-We have several models backtested and validated, but we have money invested
+* We have several models backtested and validated, and we have money invested
 in only a few of them.  Each month, how do we decide which models to
-activate or deactivate?   We discussed this in Dallas. 
+activate or deactivate?   
+* We discussed this in Dallas. 
+* Implementation of automated scorecard is underway.
 
 ## Progress
 
 - Much progress has been made in its implementation toward automation. 
+- Implementation requires one file export, data collection, and several moving parts.
 
 
+# Scorecard
 
-# Competition
+## Working Parts
 
+* Transaction history extraction from Bivio export.
+* Transaction filtering to ETP model start 8/1/16.
+* Model definition files containing _expected_ performance.
+* Model update functions containing _theoretical_ OOS performance.
+* Transaction replay for _actual_ OOS performance.
+
+## Future Work
+
+* Cloud hosting compute infrastructure.
+* Data clock triggers.
+* CM automation for result commit to repository.
+* Auto-blog posts.
+
+----
+
+Scorecard workflow status
+
+![status](images/scorecard-status.png)
+
+
+# Backup
 
 ## Metrics
 
@@ -51,18 +76,21 @@ activate or deactivate?   We discussed this in Dallas.
     + Out-of-sample vs. in-sample expected metrics
 
 
-
 ## Activation
 
 * _Activation_ refers to placing a model into portfolio; it becomes investable but may have zero weighting
 * _Deactivation_ refers to removing a model from portfolio, moving from activated tier to candidate tier; it continues tracking but is not invested
 
+## Issues
+
+* Transaction history does not tease out cash allocation
+* Actual performance does not account for cash.
+* Transaction history does not allocate shared ETP purchases across models
+
+
 ----
 
-![pool](images/flow-)
-
-
-## Relegation and Promotion
+# Relegation and Promotion
 
 ----
 
@@ -90,30 +118,3 @@ Model retirement
 ![pool](images/flow-retire.png)
 
 
-
-
-
-
-# Recommendation
-
-## High-Level Procedure
-
-* Monthly assessment of activated models
-* Monthly assessment of candidate models
-* Monthly assessment of deactivated models
-* Decision to promote, relegate or retire models
-* Decision of allocation across activated models and cash
-
-
-## Recommendation
-
-* Scorecard running six-month scores for each model
-    * CAGR rank, Sortino Ratio rank, Calmar Ratio rank
-    * $\sigma^2_\mathrm{SR}$ deviation from backtest
-* Select top $N$ models for activation, weighted by Calmar Ratio
-* Within each mnodel, weight funds by model-specific method
-
-
-## References
-
-* None
