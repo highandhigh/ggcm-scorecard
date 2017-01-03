@@ -20,23 +20,39 @@ output:
 
 # Introduction
 
-## Syopsis
+## Synopsis
 
 * We have several models backtested and validated, and we have money invested
 in only a few of them.  Each month, how do we decide which models to
 activate or deactivate?   
-* We discussed this in Dallas. 
-* Implementation of automated scorecard is underway.
+* We discussed in Dallas the scorecard and relegation.
+* Scorecard and automation implementation is underway.
+* This presentation is an implementation progress report. 
 
 ## Progress
 
-- Much progress has been made in its implementation toward automation. 
-- Implementation requires one file export, data collection, and several moving parts.
+- Good progress already achieved in risk-reducing tasks.
+- Prototypes wired together for integration testing. 
+- Progress reports elicit feedback on content and direction. 
+
+## Design Scenario
+
+- Export transaction history from Bivio into XML
+- Define model configurations in YAML
+- Read Bivio XML to collect _actual_ transacitons
+- Read model configurations for performance attribution
+- Fetch price history from Yahoo!
+- Compute expected, out-of-sample, and actual performance
+- Build scorecard and backing charts
+
+## Design Scenario
+
+![status](images/components.png)
 
 
 # Scorecard
 
-## Working Parts
+## Working Prototypes
 
 * Transaction history extraction from Bivio export.
 * Transaction filtering to ETP model start 8/1/16.
@@ -46,16 +62,75 @@ activate or deactivate?
 
 ## Future Work
 
+* Domain reconfiguration (in progress).
 * Cloud hosting compute infrastructure.
-* Data clock triggers.
+* Clock triggers.
 * CM automation for result commit to repository.
 * Auto-blog posts.
+* Automating Bivio export
 
 ----
 
 Scorecard workflow status
 
 ![status](images/scorecard-status.png)
+
+----
+
+Model recommendations
+
+![mr](images/roc3_ranking.png)
+
+----
+
+Account ending equity
+
+![aee](images/account-ee.png)
+
+----
+
+Model components as traded
+
+![modelcomp](images/model-components.png)
+
+----
+
+Model returns as traded
+
+![modelret](images/model-returns.png)
+
+----
+
+Scorecard 
+
+![scorecard](images/scorecard-formatted.png)
+
+----
+
+Target Scorecard (as shown in Dallas)
+
+![target](images/target.png)
+
+----
+
+Buy-Hold model basket comparisons
+
+![buyhold](images/buyhold.png)
+
+----
+
+Theoretical vs. Actual
+
+![tva](images/tva.png)
+
+----
+
+Individual basket component positions
+
+![xle](images/xle.png)
+
+
+
 
 
 # Backup
