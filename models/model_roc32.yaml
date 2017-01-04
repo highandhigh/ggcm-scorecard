@@ -1,8 +1,6 @@
 # 3ROC model config
 model: "3ROC32"
 version: "0.1"
-partner: "rocker"
-
 config:
   periods: [1,2,3]
   weights: [0.4,0.3,0.3]
@@ -10,7 +8,6 @@ config:
   trailstop: 0.0
   topn: 3
   basket: [XLY, XLP, XLE, XLK, XLU, XLF, AGG, TLT, GLD]
-    
 backtest:
   start: 2004-12-01
   stop: 2016-09-14 # out-of-sample start
@@ -21,17 +18,3 @@ backtest:
   mdd: 19.0
   sortino: 3.2
   calmar: 7.9
-    
-history:
-  - sample: "2016-03-01"
-    cagr: 8.5
-    mdd: 20.1
-    sortino: 3.2
-    calmar: 9.4
-
-  - sample: "2016-04-01"
-    cagr: 8.2
-    mdd: 20.1
-    sortino: 2.7
-    calmar: 9.0
-

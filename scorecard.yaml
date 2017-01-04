@@ -2,35 +2,21 @@ version: 0.1
 vintage: "2016-12-01"
 
 table:
-  - status: activated
-    models: 
-    - id: "3ROC 13"
-      partner: "Partner 3"
-      config: "model_roc13.yaml"
-      live: "2016-08-05"
-      
-    - id: "RSO 44"
-      partner: "Partner 4"
-      config: "model_rso44.yaml"
-      live: "2016-08-05"
-      
-  - status: candidate
-    models:
-    - id: "3ROC 32"
-      partner: "Partner 3"
-      config: "model_roc32.yaml"
+  activated:
+  - id: "3ROC 13"
+    partner: "MRB"
+    config: "model_roc13.yaml"
+    live: "2016-08-01"
+  - id: "RSO SM20"
+    partner: "STN"
+    config: "model_rso20.yaml"
+    live: "2016-09-14"
+  candidate: # id, partner, config, not live; does OOS update as active, with ranking
+  - id: "3ROC 32" 
+    partner: "TBD"
+    config: "model_roc32.yaml"
+  deactivated: # would have id, partner, config, not live; does OOS update as active, without ranking
+  - id: NA
+  retired: # would have id, no partner, config, not live; does OOS update as active, without ranking
+  - id: NA
   
-  - status: deactivated
-    models:
-    - id: "CRV 01"
-      partner: "Partner 3"
-      config: "model_crv02.yaml"
-    
-  - status: retired
-    models:
-
-
-
-
-
-

@@ -1,15 +1,13 @@
 #' @title scorecard
-#' @description Scorecard from bivio transactions, models, and blotter integration.
+#' @description Scorecard from Bivio transactions, models, and blotter trade integration.
 #' @author mrb, \email{mrb@greatgray.org}
 
-# TODO run scorecard models with investment; simulated trades
-# TODO format scorecard
-# TODO buy-hold equal weight basket 
-# TODO ggplot position chart, like chart.Posn
-# TODO use formattable for this data frame
+# TODO RSO function implementation
+# TODO transactions only for activated rows, others OOS results by function call
 
 invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                   "yaml",
+                                                  "zoo",
                                                   "timeSeries",
                                                   "quantmod",
                                                   "tidyr",
@@ -53,8 +51,11 @@ verbose <- TRUE
 scorecard <- yaml.load_file("scorecard.yaml")
 scorecard.vintage <- scorecard$vintage
 scorecard.version <- scorecard$version
-scorecard.table <- scorecard$table
-scorecard.tickers <- c()
+scorecard.activated <- scorecard$table$activated
+scorecard.candidate <- scorecard$table$candidate
+scorecard.deactivated <- scorecard$table$deactivated
+scorecard.retired <- scorecard$table$retired
+scorecard.tickers <- c() # filled later
 
 # initialize transaction history
 bivio <- "/Users/mrb/Desktop/clubexp.xml"
@@ -297,73 +298,55 @@ benchmark.cumulatives <- cumprod(1+benchmark.returns)
 
 
 # identify model configuration files from scorecard
-model.files <- unlist(sapply(scorecard.table,function(section) {
-  unlist(sapply(section$models,function(m){
-    return(m$config)
-  }))
-}))
+scorecard.table <- c(scorecard.activated,scorecard.candidate,scorecard.deactivated,scorecard.retired)
+model.files <- unlist(lapply(scorecard.table,function(x) return (x$config)))
 
-# find model status
-find.status <- function(name) {
-  rv <- "NF"
-  for ( si in scorecard.table ) {
-    status <- si$status
-    for ( mi in si$models ) {
-      if ( grepl(name,mi$config) ) {
-        rv <- status
-      }
+# creates a portion of the scorecard from the definition and model files
+insert.scorecard <- function(scg,group_name="NA") {
+  refresh <- today()
+  scorecard.rv <- data.frame()
+  for ( id in scg ) {
+    if ( id$id != "NA") {
+      location <- paste("models",id$config,sep='/')
+      mc <- yaml.load_file(location)
+      df <- data.frame(Status=group_name,
+                       ModelID=id$id,
+                       Owner=id$partner,
+                       Exp.OOS=mc$backtest$stop,
+                       Exp.CAGR=mc$backtest$cagr,
+                       Exp.MDD=mc$backtest$mdd,
+                       Exp.Sortino=mc$backtest$sortino,
+                       Exp.Calmar=mc$backtest$calmar,
+                       Data.Live=ifelse(is.null(id$live),mc$backtest$stop,id$live),
+                       Data.Refresh=refresh,
+                       Actual.CAGR=NA,
+                       Actual.MDD=NA,
+                       Actual.Sortino=NA,
+                       Actual.Calmar=NA,
+                       Location=location
+      )
+      scorecard.rv <- bind_rows(scorecard.rv,df)
     }
   }
-  return(rv)
+  return(scorecard.rv)
 }
-
-# find model live date
-find.live <- function(name) {
-  rv <- ""
-  for ( si in scorecard.table ) {
-    if ( grepl(si$status,'activated') ) {
-      for ( mi in si$models ) {
-        if ( grepl(name,mi$config) ) {
-          rv <- mi$live
-        }
-      }
-    }
-  }
-  return(rv)
-}
-
 
 ### initialize scorecard
 scorecard.out <- data.frame()
-refresh <- today()
-for ( mf in model.files ) {
-  location <- paste("models",mf,sep='/')
-  mc <- yaml.load_file(location)
-  df <- data.frame(Status=find.status(mf),
-                   ModelID=mc$model,
-                   Exp.OOS=mc$backtest$stop,
-                   Exp.CAGR=mc$backtest$cagr,
-                   Exp.MDD=mc$backtest$mdd,
-                   Exp.Sortino=mc$backtest$sortino,
-                   Exp.Calmar=mc$backtest$calmar,
-                   Data.Live=find.live(mf),
-                   Data.Refresh=refresh,
-                   Actual.CAGR=NA,
-                   Actual.MDD=NA,
-                   Actual.Sortino=NA,
-                   Actual.Calmar=NA,
-                   Owner=mc$partner
-  )
-  scorecard.out <- bind_rows(scorecard.out,df)
-}
+scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.activated,"Activated"))
+scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.candidate,"Candidate"))
+scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.deactivated,"Deactivated"))
+scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.retired,"Retired"))
 rownames(scorecard.out) <- scorecard.out$ModelID
 
-### collect reesults for each model configuration
-for ( mf in model.files ) {
-  location <- paste("models",mf,sep='/')
-  model.configuration <- yaml.load_file(location)
+### collect reesults for each scorecard row
+for ( r in 1:nrow(scorecard.out) ) {
+
+  scorecard.row <- scorecard.out[r,]
+  model.configuration <- yaml.load_file(scorecard.row$Location)
   model.basket <- model.configuration$config$basket
-  model.name <- model.configuration$model
+  # model.name <- model.configuration$model
+  model.name <- scorecard.row$ModelID # used for row name access
   ignore <- getAndAdjust(model.basket,init.date,switch.date)
   
   # final purge of transactions, eliminate non-basket transactions
@@ -541,10 +524,10 @@ for ( mf in model.files ) {
   
   # portfolio plot sanity check
   model.stats <- getAccount(acct.name)$portfolios$model
-  ms1 <- plotModelStat(model.stats$Gross.Value,paste(model.name,"Model Stats: Gross Value"))
-  ms3 <- plotModelStat(model.stats$Net.Trading.PL,paste(model.name,"Model Stats: Net Trading P&L"))
-  print(ms1)
-  print(ms3)
+  #ms1 <- plotModelStat(model.stats$Gross.Value,paste(model.name,"Model Stats: Gross Value"))
+  #ms3 <- plotModelStat(model.stats$Net.Trading.PL,paste(model.name,"Model Stats: Net Trading P&L"))
+  #print(ms1)
+  #print(ms3)
   
   # account plot sanity check
   account.summary <- getAccount(acct.name)$summary
@@ -740,7 +723,7 @@ for ( mf in model.files ) {
 
 # scorecard rankings for activated and candidate
 actual.rank <- scorecard.out %>% 
-  dplyr::filter(Status %in% c('activated','candidate')) %>% 
+  dplyr::filter(Status %in% c('Activated','Candidate')) %>% 
   mutate(CAGR.R=dense_rank(desc(Actual.CAGR))) %>%
   mutate(MDD.R=dense_rank(Actual.MDD)) %>%
   mutate(Calmar.R=dense_rank(desc(Actual.Calmar))) %>%
@@ -755,7 +738,15 @@ formatted.scorecard <- formattable(scorecard.ranked,list(
   #area(col=c(MDD.R)) ~ normalize_bar("lightgreen",min=0,max=1),
   #area(col=c(Calmar.R)) ~ normalize_bar("lightgreen",min=0,max=1),
   #area(col=c(Sortino.R)) ~ normalize_bar("lightgreen",min=0,max=1),
-  Status = color_tile("white","yellow")
+  ModelID = formatter("span",style = x ~ style(background="lightgray",color="black")),
+  Status = formatter("span",style = x ~ ifelse(x=="Activated",
+                                               style(background="green",color="white",font.weight="bold"),
+                                               ifelse(x=="Candidate",
+                                                      style(background="yellow",color="black",font.weight="bold"),
+                                                      ifelse(x=="Deactivated",
+                                                             style(background="red",color="white",font.weight="bold"),
+                                                             style(background="blue",color="white",font.weight="bold")))))
 ))
+formatted.scorecard
 
 
