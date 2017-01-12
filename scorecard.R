@@ -2,8 +2,8 @@
 #' @description Scorecard from Bivio transactions, models, and blotter trade integration.
 #' @author mrb, \email{mrb@greatgray.org}
 
-# TODO RSO function implementation
 # TODO transactions only for activated rows, others OOS results by function call
+# TODO pass model config to model updater functions
 
 invisible(suppressPackageStartupMessages(lapply(c("XML",
                                                   "yaml",

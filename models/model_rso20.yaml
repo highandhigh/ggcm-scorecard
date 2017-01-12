@@ -7,6 +7,7 @@ config:
   trailstop: 0.10 # 10%
   topn: 3
   basket: [XLY, XLP, XLE, XLK, XLF, XLU, AGG, GLD, TLT, SHY]
+  function: model_update_rso20_roc
 backtest:
   start: 2004-12-01
   stop: 2016-09-14 # out-of-sample start

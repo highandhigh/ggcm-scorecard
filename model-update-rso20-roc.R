@@ -2,11 +2,11 @@
 # Copyright (C) 2017 GGCM LLP                                           #
 #########################################################################
 
-#' @title RM13 3ROC actuals
+#' @title RSO switching model actuals
 #' @author mrb
 #' @description Run and report update for fixed model configuration
 
-model_update_rm13_roc <- function() {
+model_update_rso20_roc <- function() {
   invisible(suppressPackageStartupMessages(lapply(c("quantmod",
                                                     "PerformanceAnalytics",
                                                     "ggplot2",
@@ -58,75 +58,67 @@ model_update_rm13_roc <- function() {
     assign(ticker,dx,envir=model.env) # put back into global environment
   }
   
-  study.title <- "Rank Model 13p: ROC3E"
+  study.title <- "Rank Model 20: RSO"
   start.date <- "2004-12-01"
   enact.date <- "2016-07-31"
   stop.date <- Sys.Date()
   initial.eq <- 250000
+  alpha.slow <- 0.1
+  alpha.fast <- 0.4
   top.N <- 3
-  #max.levels <- 1
-  #trail.stop.percent <- 0.00
+  max.levels <- 1
+  trail.stop.percent <- 0.00
   transaction.fee <- -4.95 # per ETF order each way
-  periods <- c(1,2,3)
-  weights <- c(0.4,0.3,0.3)
-  basket <- c("XLY", # 1998-12-22
-               "XLP", # 1998-12-22
-               "XLE", # 1998-12-22
-               "XLK", # 1998-12-22
-               "XLU", # 1998-12-22
-               "XLF", # 1998-12-22
-               "AGG", # 2003-09-26
-               "TLT", # 2002-07-30
-               "GLD" # 2004-11-18 limiter
-  )
+  rebalance.freq <- 'years' # 'quarters', 'months'
+  basket <- c('XLY', 'XLP', 'XLE', 'XLK', 'XLF', 'XLU', 
+              'AGG', 'GLD', 'TLT', 'SHY')
+  benchmarks <- c("SPY")
   
-  for ( symbol in basket ) {
+  for ( symbol in c(basket,benchmarks) ) {
     ignore <- getAndAdjust(symbol,start.date)
   }
   
   # create an xts object of daily adjusted close prices
   basket.close.monthly <- monthlyPrices(basket,env=model.env)
+  benchmarks.close.monthly <- monthlyPrices(benchmarks)
   colnames(basket.close.monthly) <- basket
+  colnames(benchmarks.close.monthly) <- benchmarks
   
-  # create an xts object of the symbol ranks
-  sym.rank <- applyRank(x=basket.close.monthly, 
-                        rankFun=weightAve3ROC,
-                        n=periods, 
-                        weights=weights)
-  sym.rank <- na.fill(sym.rank,fill=ncol(sym.rank)) # ensure trading rules exit
-  colnames(sym.rank) <- gsub(".Adjusted", ".Rank", colnames(sym.rank))
-  stopifnot(all.equal(gsub(".Adjusted", "", colnames(basket.close.monthly)), basket))
+  basket.ratio <- do.call(merge,lapply(basket,function(s) basket.close.monthly[,s] / benchmarks.close.monthly[,1]))
   
-  # bind the rank column to the appropriate symbol market data
-  for(i in 1:length(basket)) {
-    x <- get(basket[i],envir=model.env)
-    y <- na.locf(cbind(x,sym.rank[,i]))
-    y <- y[,ncol(y)]
-    x <- cbind(x,y,join="left")
-    assign(basket[i],x,envir=model.env)
-  }
+  basket.relative.strength <- do.call(merge,lapply(basket,function(s) basket.ratio[,s] / as.numeric(basket.ratio[1,s])))
+  basket.slow <- do.call(merge,lapply(basket,function(s) EMA(basket.relative.strength[,s],n=2,ratio=alpha.slow)))
+  basket.fast <- do.call(merge,lapply(basket,function(s) EMA(basket.relative.strength[,s],n=2,ratio=alpha.fast)))
+  basket.slow[1,] <- 1
+  basket.fast[1,] <- 1
+  colnames(basket.slow) <- paste(basket,"Slow",sep='.')
+  colnames(basket.fast) <- paste(basket,"Fast",sep='.')
+  basket.oscillator <- 100 * (basket.fast / basket.slow - 1)
+  colnames(basket.oscillator) <- paste(basket,"RSO",sep='.')
   
+  basket.rank <- ifelse(basket.oscillator > 0, basket.oscillator, NA)
+  basket.rank <- na.fill(rowRank(basket.rank),length(basket))
+  colnames(basket.rank) <- gsub(".RSO","",colnames(basket.rank))
   
   # last six months ranking by component
-  df <- tail(sym.rank, n=6)
-  colnames(df) <- gsub(".Rank","",colnames(sym.rank))
+  df <- tail(basket.rank, n=6)
   textplot( df )
   title("Basket Component Ranking")
   
   # last 24 months ranking plot  
-  sym.rank.df <- as.data.frame(sym.rank)
-  colnames(sym.rank.df) <- gsub(".Rank","",colnames(sym.rank))
-  sym.rank.df$Date <- as.Date(rownames(sym.rank.df))
-  sym.rank.df <- tail(sym.rank.df,n=24) # last 24 months
-  dfg <- gather(sym.rank.df,Symbol,Value,1:(ncol(df)-1))
-  sym.rank.p <- ggplot(dfg,aes(x=Date,y=Value)) +
+  basket.rank.df <- as.data.frame(basket.rank)
+  basket.rank.df$Date <- as.Date(rownames(basket.rank.df))
+  basket.rank.df <- tail(basket.rank.df,n=24) # last 24 months
+  dfg <- gather(basket.rank.df,Symbol,Value,1:(ncol(df)-1))
+  basket.rank.p <- ggplot(dfg,aes(x=Date,y=Value)) +
     facet_grid(Symbol~.) +
     geom_step(color="blue") +
     scale_y_reverse(breaks=c(1,3,5,7,9),labels=c("1","3","5","7","9")) +
-    ggtitle("3ROC Ranking by Fund (Last 24 Months)") +
-    ylab("3ROC Value (1 is Highest)") +
+    ggtitle("RSO Ranking by Fund (Last 24 Months)") +
+    ylab("RSO Value (1 is Highest)") +
     xlab(NULL) +
     geom_hline(yintercept=top.N,linetype="dashed",color="darkgreen")
+  # basket.rank.p
   
   # returns and performance starting enact date
   prices <- NULL
@@ -136,19 +128,87 @@ model_update_rm13_roc <- function() {
   returns <- diff(log(prices))[-1, ]
   components <- returns[paste0(enact.date,"::"),]
   #basket.comp.p <- ggChartsPerformanceSummary2(components,
-  #                                ptitle="RM13 3ROC Basket Component Performance")
+  #                ptitle="RM20 RSO Basket Component Performance")
   #basket.comp.p
+
+  # bind the columns to the appropriate symbol market data
+#   for(i in 1:length(basket)) {
+#     # build the combined monthly indicators 
+#     z <- basket.ratio[,i]
+#     colnames(z) <- "Ratio"
+#     z$RS <- coredata(basket.relative.strength[,i])
+#     z$Slow <- coredata(basket.slow[,i])
+#     z$Fast <- coredata(basket.fast[,i])
+#     z$RSO <- coredata(basket.oscillator[,i])
+#     z$Rank <- coredata(basket.rank[,i])
+#     
+#     # insert the monthly indicators into daily OHLC data
+#     x <- get(basket[i])
+#     x <- na.locf(cbind(x,z))
+#     assign(basket[i],x)
+#   }
+
+  yr <- ceiling(max(abs(basket.relative.strength)))
+  df <- data.frame(coredata(basket.relative.strength),
+                   Date=index(basket.relative.strength))
+  dfg <- gather(df,Symbol,Value,1:(ncol(df)-1))
+  
+  # RS in separate panels
+  p1 <- ggplot(dfg,aes(x=Date,y=Value)) +
+    facet_grid(Symbol~.,scales="free_y") +
+    geom_line() +
+    ggtitle(paste("Relative Strength",
+                  "Market", benchmarks[1], sep=' - ')) +
+    xlab(NULL) + ylab("Relative Strength") +
+    geom_hline(yintercept=1,linetype="dashed",color="darkgreen")
+  #plot(p1)
+  
+  # RS overlaid
+  p2 <- ggplot(dfg,aes(x=Date,y=Value,color=Symbol)) +
+    geom_line() +
+    ggtitle(paste("Relative Strength",
+                  "Market", benchmarks[1], sep=' - ')) +
+    xlab(NULL) + ylab("Relative Strength") +
+    geom_hline(yintercept=1,linetype="dashed",color="darkgreen")
+  p2 <- direct.label(p2)
+  
+  # RSO
+  colnames(basket.oscillator) <- gsub(".RSO","",colnames(basket.oscillator))
+  
+  yr <- ceiling(max(abs(basket.oscillator)))
+  df <- data.frame(coredata(basket.oscillator),
+                   Date=index(basket.oscillator))
+  dfg <- gather(df,Symbol,Value,1:(ncol(df)-1))
+
+  # RSO in separate panels
+  p3 <- ggplot(dfg,aes(x=Date,y=Value)) +
+    facet_grid(Symbol~.,scales="free_y") +
+    geom_line() +
+    ggtitle(paste("Relative Strength Oscillator",
+                  "Market", benchmarks[1], sep=' - ')) +
+    xlab(NULL) + ylab("Relative Strength Oscillator") +
+    geom_hline(yintercept=0,linetype="dashed",color="darkgreen")
+  #plot(p)
+  
+  # RSO overlaid
+  p4 <- ggplot(dfg,aes(x=Date,y=Value,color=Symbol)) +
+    geom_line() +
+    ggtitle(paste("Relative Strength Oscillator",
+                  "Market", benchmarks[1], sep=' - ')) +
+    xlab(NULL) + ylab("Relative Strength Oscillator") +
+    geom_hline(yintercept=0,linetype="dashed",color="darkgreen")
+  # plot(p)
+  p4 <- direct.label(p4)
+  
   
   # recreate transactions
   # clear the blotter account and portfolios
-  if (!exists(".blotter"))
-    .blotter <- new.env()
-  rm(list=ls(envir=.blotter),envir=.blotter)
+  resetQuantstrat()
   
   # setup blotter account and portfolio
   verbose <- TRUE
-  acct.name <- "3roc.acct"
-  port.name <- "3roc.port"
+  acct.name <- "rso.acct"
+  port.name <- "rso.port"
   acct.date <- as.Date(enact.date)-1
   initPortf(name=port.name, basket, initDate=acct.date, currency="USD")
   initAcct(name=acct.name, portfolios=c(port.name), initDate=acct.date, initEq=initial.eq)
@@ -159,8 +219,8 @@ model_update_rm13_roc <- function() {
     stock(mt,currency="USD",multiplier=1)
   }
   
-  action.df <- sym.rank[paste0(enact.date,'::'),]
-  colnames(action.df) <- gsub(".Rank","",colnames(action.df))
+  action.df <- basket.rank[paste0(enact.date,'::'),]
+  colnames(action.df) <- gsub(".RSO","",colnames(action.df))
   previous.symbols <- c()
   
   for ( i in 1:nrow(action.df)) {
@@ -244,8 +304,9 @@ model_update_rm13_roc <- function() {
               sr=sortino.ratio,
               mdp=max.drawdown.percent,
               final.eq=final.eq,
-              rank.p=sym.rank.p,
-              title=study.title
+              rank.p=basket.rank.p,
+              title=study.title,
+              model.p=c(p1,p2,p3,p4)
   ))
 }
 

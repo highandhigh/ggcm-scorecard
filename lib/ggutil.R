@@ -238,3 +238,16 @@ ggChartsPerformanceSummary2 <- function(r.xts,ptitle="",geometric=TRUE,drawdown.
   }
   return(p)
 }
+
+#' Reset quantstrat environments .strategy, .blotter, and .audit.
+#' Creates environments if they do not exist
+#' Removes all elements from the environment. 
+resetQuantstrat <- function() {
+  if (!exists(".strategy")) .strategy <<- new.env(parent=.GlobalEnv)
+  if (!exists(".blotter")) .blotter <<- new.env(parent=.GlobalEnv)
+  if (!exists(".audit")) .audit <<- new.env(parent=.GlobalEnv)
+  suppressWarnings(rm(list=ls(.strategy), pos=.strategy))
+  suppressWarnings(rm(list=ls(.blotter), pos=.blotter))
+  suppressWarnings(rm(list=ls(.audit), pos=.audit))
+  # suppressWarnings(rm(list=ls()))
+}

@@ -141,9 +141,7 @@ model_update_rm13_roc <- function() {
   
   # recreate transactions
   # clear the blotter account and portfolios
-  if (!exists(".blotter"))
-    .blotter <- new.env()
-  rm(list=ls(envir=.blotter),envir=.blotter)
+  resetQuantstrat()
   
   # setup blotter account and portfolio
   verbose <- TRUE
