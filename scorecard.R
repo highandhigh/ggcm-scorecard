@@ -1,4 +1,4 @@
-#' @title scorecard
+#' @title GGCM scorecard
 #' @description Scorecard from Bivio transactions, models, and blotter trade integration.
 #' @author mrb, \email{mrb@greatgray.org}
 
@@ -277,7 +277,8 @@ ti.df <- ti.df[tday:nrow(ti.df),]
 # trim the capital gains records, bookkeeping not related to blotter
 `%nin%` <- Negate(`%in%`) 
 ti.df <- ti.df %>% 
-  dplyr::filter(ie.tax_category %nin% c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
+  dplyr::filter(ie.tax_category %nin% 
+                  c("SHORT_TERM_CAPITAL_GAIN","LONG_TERM_CAPITAL_GAIN"))
 
 # purge some regime overlap tickers; these had transactions after model regime start
 # 2016/08 minutes: tickers AFL, ESV, NE, QCOM, WFC and XLP to be kept, all else sell
@@ -298,7 +299,10 @@ benchmark.cumulatives <- cumprod(1+benchmark.returns)
 
 
 # identify model configuration files from scorecard
-scorecard.table <- c(scorecard.activated,scorecard.candidate,scorecard.deactivated,scorecard.retired)
+scorecard.table <- c(scorecard.activated,
+                     scorecard.candidate,
+                     scorecard.deactivated,
+                     scorecard.retired)
 model.files <- unlist(lapply(scorecard.table,function(x) return (x$config)))
 
 # creates a portion of the scorecard from the definition and model files
@@ -339,20 +343,22 @@ scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.deactivated,
 scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.retired,"Retired"))
 rownames(scorecard.out) <- scorecard.out$ModelID
 
-### collect reesults for each scorecard row
-for ( r in 1:nrow(scorecard.out) ) {
+# TODO this section 'active' only, actuals and buy-hold since activated
+### collect results for each scorecard row
+# for ( r in 1:nrow(scorecard.out) ) {
+by(scorecard.out,seq_len(nrow(scorecard.out)),function(scorecard.row){
 
-  scorecard.row <- scorecard.out[r,]
+  # scorecard.row <- scorecard.out[r,]
   model.configuration <- yaml.load_file(scorecard.row$Location)
   model.basket <- model.configuration$config$basket
-  # model.name <- model.configuration$model
   model.name <- scorecard.row$ModelID # used for row name access
   ignore <- getAndAdjust(model.basket,init.date,switch.date)
   
   # final purge of transactions, eliminate non-basket transactions
-  transactions.df <- ti.df %>% dplyr::filter(ticker_symbol %in% model.basket )
+  transactions.df <- ti.df %>% 
+    dplyr::filter(ticker_symbol %in% model.basket )
   
-  # clear the blotter account and portfolios
+  # clear the blotter account and portfolios for this model
   if (!exists(".blotter"))
     .blotter <- new.env()
   rm(list=ls(envir=.blotter),envir=.blotter)
@@ -368,13 +374,13 @@ for ( r in 1:nrow(scorecard.out) ) {
   initAcct("buyhold.acct", portfolios="buyhold.port", initDate=init.date, initEq=init.eq)
   
   # setup blotter instruments
-  for ( mt in model.basket) {
-    stock(mt,currency="USD")
-  }
-  
+  #for ( mt in model.basket) {
+  #  stock(mt,currency="USD")
+  #}
+  ignore <- sapply(model.basket,function(m){stock(m,currency="USD")})
+
   # add transactions to blotter
-  for ( i in 1:nrow(transactions.df) ) {
-    ti <- transactions.df[i,]
+  by(transactions.df, seq_len(nrow(transactions.df)), function(ti) {
     # switch returns a function having ti parameter
     rv <- switch(ti$ie.type,
                  "INSTRUMENT_COVER_SHORT_SALE"=function(ti) {
@@ -515,7 +521,7 @@ for ( r in 1:nrow(scorecard.out) ) {
                  }
     ) # switch
     rv(ti)
-  }
+  })
   
   lastDate <- xts::last(transactions.df)$date
   updatePortf(port.name)
@@ -532,7 +538,6 @@ for ( r in 1:nrow(scorecard.out) ) {
   # account plot sanity check
   account.summary <- getAccount(acct.name)$summary
   as1 <- plotModelStat(account.summary$End.Eq,paste(model.name,"Account Stats: Ending Equity"))
-  print(as1)
   
   
   # component and account returns
@@ -698,7 +703,8 @@ for ( r in 1:nrow(scorecard.out) ) {
   #   guides(color=FALSE) +
   #   ggtitle(paste(model.name,"vs. Buy-Hold Basket Cumulative Return"))
   # direct.label(p)
-  p <- ggChartsPerformanceSummary2(xr,ptitle=paste(model.name,"vs.","Buy-Hold Basket"))
+  p <- ggChartsPerformanceSummary2(xr,
+                                   ptitle=paste(model.name,"vs.","Buy-Hold Basket"))
   p
   
   # combined active model and buy-hold drawdowns
@@ -715,11 +721,13 @@ for ( r in 1:nrow(scorecard.out) ) {
   # direct.label(p, visualcenter)
   
   # save model performance results to scorecard output
-  scorecard.out[model.name,'Actual.CAGR'] <- annual.percent
-  scorecard.out[model.name,'Actual.MDD'] <- max.drawdown.percent
-  scorecard.out[model.name,'Actual.Sortino'] <- sortino.ratio
-  scorecard.out[model.name,'Actual.Calmar'] <- calmar.ratio
-}
+  if ( scorecard.row$Status == 'Activated' ) {
+    scorecard.row$Actual.CAGR <- annual.percent
+    scorecard.row$Actual.MDD <- max.drawdown.percent
+    scorecard.row$Actual.Sortino <- sortino.ratio
+    scorecard.row$Actual.Calmar <- calmar.ratio
+  }
+}) # scorecard.row
 
 # scorecard rankings for activated and candidate
 actual.rank <- scorecard.out %>% 
@@ -734,10 +742,6 @@ scorecard.ranked <- left_join(scorecard.out,actual.rank,by='ModelID')
 scorecard.ranked[is.na(scorecard.ranked)] <- ''
 
 formatted.scorecard <- formattable(scorecard.ranked,list(
-  #area(col=c(CAGR.R)) ~ normalize_bar("lightgreen",min=0,max=1),
-  #area(col=c(MDD.R)) ~ normalize_bar("lightgreen",min=0,max=1),
-  #area(col=c(Calmar.R)) ~ normalize_bar("lightgreen",min=0,max=1),
-  #area(col=c(Sortino.R)) ~ normalize_bar("lightgreen",min=0,max=1),
   ModelID = formatter("span",style = x ~ style(background="lightgray",color="black")),
   Status = formatter("span",style = x ~ ifelse(x=="Activated",
                                                style(background="green",color="white",font.weight="bold"),
