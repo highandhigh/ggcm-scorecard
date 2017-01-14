@@ -5,87 +5,32 @@
 #' @title RM13 3ROC actuals
 #' @author mrb
 #' @description Run and report update for fixed model configuration
+#' 
 
-model_update_rm13_roc <- function() {
-  invisible(suppressPackageStartupMessages(lapply(c("quantmod",
-                                                    "PerformanceAnalytics",
-                                                    "ggplot2",
-                                                    "dplyr",
-                                                    "tidyr",
-                                                    "scales",
-                                                    "directlabels",
-                                                    "quantstrat"
-  ),
-  require,
-  warn.conflicts=FALSE,
-  character.only=TRUE
-  )))
-  invisible(suppressMessages(lapply(c("lib/emit.R",
-                                      "lib/rank.R",
-                                      "lib/ggutil.R",
-                                      "lib/monthly.R"),
-                                    source,
-                                    verbose=FALSE)))
+model_update_rm13_roc <- function(scorecard.row) {
   
+  model <- scorecard.row$model
+  study.title <- model$model
+  # start.date <- model$backtest$start
+  enact.date <- model$backtest$stop # end of in-sample is start of out-of-sample
+  stop.date <- Sys.Date() # out-of-sample stop is today
+  initial.eq <- model$backtest$initeq
+  top.N <- model$config$topn
+  # trail.stop.percent <- model$config$trailstop
+  transaction.fee <- model$backtest$transaction
+  periods <- model$config$periods
+  weights <- model$config$weights
+  basket <- model$config$basket
   
-  # general options
-  options("getSymbols.warning4.0"=FALSE,
-          digits=4,
-          width=100,
-          scipen=100)
-  
-  `%nin%` <- Negate(`%in%`) 
-  
-  # special environment for theoretical prices
-  # model.env <- new.env() # problems with quanstrat doing this
-  model.env <- .GlobalEnv
-  
-  # get symbol data, adjust close, trim history, save to global environment
-  getAndAdjust <- function(ticker,init_date) {
-    message(paste("Fetching",ticker))
-    dx <- getSymbols(ticker,
-                     from=init_date,
-                     index.class=c("POSIXt","POSIXct"),
-                     warnings=FALSE,
-                     verbose=FALSE,
-                     auto.assign = FALSE,
-                     env=model.env)
-    if ( has.Ad(dx) ) {
-      dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
-    }
-    # dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
-    colnames(dx) <- gsub(paste(ticker,'.',sep=''),"",colnames(dx))
-    assign(ticker,dx,envir=model.env) # put back into global environment
-  }
-  
-  study.title <- "Rank Model 13p: ROC3E"
-  start.date <- "2004-12-01"
-  enact.date <- "2016-07-31"
-  stop.date <- Sys.Date()
-  initial.eq <- 250000
-  top.N <- 3
-  #max.levels <- 1
-  #trail.stop.percent <- 0.00
-  transaction.fee <- -4.95 # per ETF order each way
-  periods <- c(1,2,3)
-  weights <- c(0.4,0.3,0.3)
-  basket <- c("XLY", # 1998-12-22
-               "XLP", # 1998-12-22
-               "XLE", # 1998-12-22
-               "XLK", # 1998-12-22
-               "XLU", # 1998-12-22
-               "XLF", # 1998-12-22
-               "AGG", # 2003-09-26
-               "TLT", # 2002-07-30
-               "GLD" # 2004-11-18 limiter
-  )
-  
-  for ( symbol in basket ) {
-    ignore <- getAndAdjust(symbol,start.date)
+  # trim basket to enact date
+  for ( ticker in basket ) {
+    dx <- get(ticker,envir=.GlobalEnv)
+    dx <- dx[paste0(enact.date,'::',stop.date),]
+    assign(ticker,dx,envir=.GlobalEnv)
   }
   
   # create an xts object of daily adjusted close prices
-  basket.close.monthly <- monthlyPrices(basket,env=model.env)
+  basket.close.monthly <- monthlyPrices(basket)
   colnames(basket.close.monthly) <- basket
   
   # create an xts object of the symbol ranks
@@ -99,11 +44,11 @@ model_update_rm13_roc <- function() {
   
   # bind the rank column to the appropriate symbol market data
   for(i in 1:length(basket)) {
-    x <- get(basket[i],envir=model.env)
+    x <- get(basket[i])
     y <- na.locf(cbind(x,sym.rank[,i]))
     y <- y[,ncol(y)]
     x <- cbind(x,y,join="left")
-    assign(basket[i],x,envir=model.env)
+    assign(basket[i],x)
   }
   
   
@@ -123,7 +68,7 @@ model_update_rm13_roc <- function() {
     facet_grid(Symbol~.) +
     geom_step(color="blue") +
     scale_y_reverse(breaks=c(1,3,5,7,9),labels=c("1","3","5","7","9")) +
-    ggtitle("3ROC Ranking by Fund (Last 24 Months)") +
+    ggtitle("3ROC Ranking by Fund") +
     ylab("3ROC Value (1 is Highest)") +
     xlab(NULL) +
     geom_hline(yintercept=top.N,linetype="dashed",color="darkgreen")
@@ -131,7 +76,7 @@ model_update_rm13_roc <- function() {
   # returns and performance starting enact date
   prices <- NULL
   for (symbol in basket)
-    prices <- cbind(prices,Cl(get(symbol,envir=model.env)))
+    prices <- cbind(prices,Cl(get(symbol)))
   colnames(prices) <- basket
   returns <- diff(log(prices))[-1, ]
   components <- returns[paste0(enact.date,"::"),]
@@ -152,7 +97,6 @@ model_update_rm13_roc <- function() {
   initAcct(name=acct.name, portfolios=c(port.name), initDate=acct.date, initEq=initial.eq)
   
   # setup blotter instruments
-  FinancialInstrument::currency("USD")
   for ( mt in basket) {
     stock(mt,currency="USD",multiplier=1)
   }
@@ -173,7 +117,7 @@ model_update_rm13_roc <- function() {
     
     # sell old positions
     for ( ps in previous.symbols[which(previous.symbols %nin% top.symbols )]) {
-      psp <- suppressWarnings(to.monthly(get(ps,envir=model.env),indexAt="lastof"))
+      psp <- suppressWarnings(to.monthly(get(ps),indexAt="lastof"))
       psp <- as.numeric(Cl(psp[rank.date,]))
       pos <- as.numeric(getPos(Portfolio=port.name,Symbol=ps,Date=rank.date,Columns="Pos.Qty",n=1))
       message(paste(rank.date,"sell position",ps,pos,"shares","at",dollar(psp)))
@@ -194,13 +138,15 @@ model_update_rm13_roc <- function() {
     
     for ( ts in top.symbols ) {
       if ( ts %in% previous.symbols ) {
-        message(paste(rank.date,"already hold",ts))
+        if ( getOption("verbose"))
+          message(paste(rank.date,"already hold",ts))
       } else {
-        tsp <- suppressWarnings(to.monthly(get(ts,envir=model.env),indexAt="lastof"))
+        tsp <- suppressWarnings(to.monthly(get(ts),indexAt="lastof"))
         tsp <- as.numeric(Cl(tsp[rank.date,])) # price
         tsi <- port.eq / top.N # investment
         tss <- round(tsi / tsp,0) # shares
-        message(paste(rank.date,"buy position",ts,tss,"shares","at",dollar(tsp)))
+        if ( getOption("verbose") )
+          message(paste(rank.date,"buy position",ts,tss,"shares","at",dollar(tsp)))
         addTxn(Portfolio=port.name,
                Symbol=ts,
                TxnDate=rank.date,
@@ -220,30 +166,36 @@ model_update_rm13_roc <- function() {
   updatePortf(port.name)
   updateAcct(acct.name)
   updateEndEq(acct.name)
-  final.eq <- getEndEq(acct.name,stop.date) + initial.eq
+  #final.eq <- getEndEq(acct.name,stop.date) + initial.eq
   
   pr <- PortfReturns(acct.name)
   colnames(pr) <- gsub(".DailyEndEq","",colnames(pr))
   pr <- pr[paste0(enact.date,'::'),]
   pr$Theoretical <- rowSums(pr)
-  #ggChartsPerformanceSummary2(pr$Theoretical,
-  #                            ptitle=paste(study.title,"(Theoretical)"),
-  #                            drawdown.minima = "gray")
+  pc <- cumprod(1+pr)
   
+  p1 <- ggChartsPerformanceSummary2(pr$Theoretical,
+                              ptitle=paste(study.title,"(Theoretical)"),
+                              drawdown.minima = "gray")
+  
+
   annual.percent <- as.numeric(Return.annualized(pr$Theoretical)) * 100 # percent
   calmar.ratio <- as.numeric(CalmarRatio(pr$Theoretical)) # ratio
-  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=0)) # ratio
+  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=.1/12)) # ratio
   max.drawdown.percent <- maxDrawdown(pr$Theoretical) * 100 # percent
   
-  return(list(theoretical.returns=pr$Theoretical,
-              component.returns=components,
-              ar=annual.percent,
-              cr=calmar.ratio,
-              sr=sortino.ratio,
-              mdp=max.drawdown.percent,
-              final.eq=final.eq,
-              rank.p=sym.rank.p,
-              title=study.title
-  ))
+  scorecard.row$oos <- list(
+    r=pr$Theoretical,
+    c=pc,
+    component.returns=components,
+    cagr=annual.percent,
+    calmar=calmar.ratio,
+    sortino=sortino.ratio,
+    mdd=max.drawdown.percent,
+    rank.p=sym.rank.p,
+    plots=c(p1)
+  ) 
+  
+  return(scorecard.row)
 }
 

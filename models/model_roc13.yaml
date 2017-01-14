@@ -8,7 +8,7 @@ config:
   trailstop: 0.0
   topn: 3
   basket: [XLY, XLP, XLE, XLK, XLU, XLF, AGG, TLT, GLD]
-  function: model-update-rm13-roc
+  function: model_update_rm13_roc
 backtest:
   start: 2004-12-01
   stop: 2016-08-01 # out-of-sample start

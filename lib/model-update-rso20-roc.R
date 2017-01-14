@@ -2,84 +2,40 @@
 # Copyright (C) 2017 GGCM LLP                                           #
 #########################################################################
 
-#' @title RSO switching model actuals
+#' RSO switching model out-of-sample results
 #' @author mrb
-#' @description Run and report update for fixed model configuration
+#' @description Run and report update for given model configuration
+#' @return scorecard row with out-of-sample list element attached
+#' 
+#' @note Does not yet do rebalancing
+#' @note Does not yet do trailing stops
 
-model_update_rso20_roc <- function() {
-  invisible(suppressPackageStartupMessages(lapply(c("quantmod",
-                                                    "PerformanceAnalytics",
-                                                    "ggplot2",
-                                                    "dplyr",
-                                                    "tidyr",
-                                                    "scales",
-                                                    "directlabels",
-                                                    "quantstrat"
-  ),
-  require,
-  warn.conflicts=FALSE,
-  character.only=TRUE
-  )))
-  invisible(suppressMessages(lapply(c("lib/emit.R",
-                                      "lib/rank.R",
-                                      "lib/ggutil.R",
-                                      "lib/monthly.R"),
-                                    source,
-                                    verbose=FALSE)))
-  
-  
-  # general options
-  options("getSymbols.warning4.0"=FALSE,
-          digits=4,
-          width=100,
-          scipen=100)
-  
-  `%nin%` <- Negate(`%in%`) 
-  
-  # special environment for theoretical prices
-  # model.env <- new.env() # problems with quanstrat doing this
-  model.env <- .GlobalEnv
-  
-  # get symbol data, adjust close, trim history, save to global environment
-  getAndAdjust <- function(ticker,init_date) {
-    message(paste("Fetching",ticker))
-    dx <- getSymbols(ticker,
-                     from=init_date,
-                     index.class=c("POSIXt","POSIXct"),
-                     warnings=FALSE,
-                     verbose=FALSE,
-                     auto.assign = FALSE,
-                     env=model.env)
-    if ( has.Ad(dx) ) {
-      dx <- adjustOHLC(dx,use.Adjusted=TRUE) # adjust dividends, spinoffs, etc.
-    }
-    # dx <- dx[paste(switch_date,"::",sep=''),] # trim prehistorical data
-    colnames(dx) <- gsub(paste(ticker,'.',sep=''),"",colnames(dx))
-    assign(ticker,dx,envir=model.env) # put back into global environment
-  }
-  
-  study.title <- "Rank Model 20: RSO"
-  start.date <- "2004-12-01"
-  enact.date <- "2016-07-31"
-  stop.date <- Sys.Date()
-  initial.eq <- 250000
-  alpha.slow <- 0.1
-  alpha.fast <- 0.4
-  top.N <- 3
-  max.levels <- 1
-  trail.stop.percent <- 0.00
-  transaction.fee <- -4.95 # per ETF order each way
-  rebalance.freq <- 'years' # 'quarters', 'months'
-  basket <- c('XLY', 'XLP', 'XLE', 'XLK', 'XLF', 'XLU', 
-              'AGG', 'GLD', 'TLT', 'SHY')
+model_update_rso20_roc <- function(scorecard.row) {
+
+  model <- scorecard.row$model
+  study.title <- model$model
+  # start.date <- model$backtest$start
+  enact.date <- model$backtest$stop # end of in-sample is start of out-of-sample
+  stop.date <- Sys.Date() # out-of-sample stop is today
+  initial.eq <- model$backtest$initeq
+  top.N <- model$config$topn
+  trail.stop.percent <- model$config$trailstop
+  transaction.fee <- model$backtest$transaction
+  basket <- model$config$basket
+  alpha.fast <- model$config$smoothing[1]
+  alpha.slow <- model$config$smoothing[2]
+  rebalance.freq <- model$config$rebalance
   benchmarks <- c("SPY")
   
-  for ( symbol in c(basket,benchmarks) ) {
-    ignore <- getAndAdjust(symbol,start.date)
+  # trim basket to enact date
+  for ( ticker in c(basket,benchmarks) ) {
+    dx <- get(ticker,envir=.GlobalEnv)
+    dx <- dx[paste0(enact.date,'::',stop.date),]
+    assign(ticker,dx,envir=.GlobalEnv)
   }
-  
+
   # create an xts object of daily adjusted close prices
-  basket.close.monthly <- monthlyPrices(basket,env=model.env)
+  basket.close.monthly <- monthlyPrices(basket)
   benchmarks.close.monthly <- monthlyPrices(benchmarks)
   colnames(basket.close.monthly) <- basket
   colnames(benchmarks.close.monthly) <- benchmarks
@@ -102,8 +58,8 @@ model_update_rso20_roc <- function() {
   
   # last six months ranking by component
   df <- tail(basket.rank, n=6)
-  textplot( df )
-  title("Basket Component Ranking")
+  #textplot( df )
+  #title("Basket Component Ranking")
   
   # last 24 months ranking plot  
   basket.rank.df <- as.data.frame(basket.rank)
@@ -114,16 +70,16 @@ model_update_rso20_roc <- function() {
     facet_grid(Symbol~.) +
     geom_step(color="blue") +
     scale_y_reverse(breaks=c(1,3,5,7,9),labels=c("1","3","5","7","9")) +
-    ggtitle("RSO Ranking by Fund (Last 24 Months)") +
+    ggtitle("RSO Ranking by Fund") +
     ylab("RSO Value (1 is Highest)") +
     xlab(NULL) +
     geom_hline(yintercept=top.N,linetype="dashed",color="darkgreen")
-  # basket.rank.p
+
   
   # returns and performance starting enact date
   prices <- NULL
   for (symbol in basket)
-    prices <- cbind(prices,Cl(get(symbol,envir=model.env)))
+    prices <- cbind(prices,Cl(get(symbol)))
   colnames(prices) <- basket
   returns <- diff(log(prices))[-1, ]
   components <- returns[paste0(enact.date,"::"),]
@@ -206,7 +162,6 @@ model_update_rso20_roc <- function() {
   resetQuantstrat()
   
   # setup blotter account and portfolio
-  verbose <- TRUE
   acct.name <- "rso.acct"
   port.name <- "rso.port"
   acct.date <- as.Date(enact.date)-1
@@ -214,7 +169,6 @@ model_update_rso20_roc <- function() {
   initAcct(name=acct.name, portfolios=c(port.name), initDate=acct.date, initEq=initial.eq)
   
   # setup blotter instruments
-  FinancialInstrument::currency("USD")
   for ( mt in basket) {
     stock(mt,currency="USD",multiplier=1)
   }
@@ -235,7 +189,7 @@ model_update_rso20_roc <- function() {
     
     # sell old positions
     for ( ps in previous.symbols[which(previous.symbols %nin% top.symbols )]) {
-      psp <- suppressWarnings(to.monthly(get(ps,envir=model.env),indexAt="lastof"))
+      psp <- suppressWarnings(to.monthly(get(ps),indexAt="lastof"))
       psp <- as.numeric(Cl(psp[rank.date,]))
       pos <- as.numeric(getPos(Portfolio=port.name,Symbol=ps,Date=rank.date,Columns="Pos.Qty",n=1))
       message(paste(rank.date,"sell position",ps,pos,"shares","at",dollar(psp)))
@@ -245,7 +199,7 @@ model_update_rso20_roc <- function() {
              TxnPrice=psp,
              TxnQty=(-pos),
              TxnFees=transaction.fee,
-             verbose=verbose)
+             verbose=getOption("verbose"))
       updatePortf(port.name)
       updateAcct(acct.name)
       updateEndEq(acct.name)
@@ -258,7 +212,7 @@ model_update_rso20_roc <- function() {
       if ( ts %in% previous.symbols ) {
         message(paste(rank.date,"already hold",ts))
       } else {
-        tsp <- suppressWarnings(to.monthly(get(ts,envir=model.env),indexAt="lastof"))
+        tsp <- suppressWarnings(to.monthly(get(ts),indexAt="lastof"))
         tsp <- as.numeric(Cl(tsp[rank.date,])) # price
         tsi <- port.eq / top.N # investment
         tss <- round(tsi / tsp,0) # shares
@@ -269,7 +223,7 @@ model_update_rso20_roc <- function() {
                TxnPrice=tsp,
                TxnQty=tss,
                TxnFees=transaction.fee,
-               verbose=verbose)
+               verbose=getOption("verbose"))
         updatePortf(port.name)
         updateAcct(acct.name)
         updateEndEq(acct.name)
@@ -282,31 +236,37 @@ model_update_rso20_roc <- function() {
   updatePortf(port.name)
   updateAcct(acct.name)
   updateEndEq(acct.name)
-  final.eq <- getEndEq(acct.name,stop.date) + initial.eq
+  #final.eq <- getEndEq(acct.name,stop.date) + initial.eq
   
   pr <- PortfReturns(acct.name)
   colnames(pr) <- gsub(".DailyEndEq","",colnames(pr))
   pr <- pr[paste0(enact.date,'::'),]
   pr$Theoretical <- rowSums(pr)
-  #ggChartsPerformanceSummary2(pr$Theoretical,
-  #                            ptitle=paste(study.title,"(Theoretical)"),
-  #                            drawdown.minima = "gray")
+  pc <- cumprod(1+pr)
+  
+  p5 <- ggChartsPerformanceSummary2(pr$Theoretical,
+                              ptitle=paste(study.title,"(Theoretical)"),
+                              drawdown.minima = "gray")
   
   annual.percent <- as.numeric(Return.annualized(pr$Theoretical)) * 100 # percent
   calmar.ratio <- as.numeric(CalmarRatio(pr$Theoretical)) # ratio
-  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=0)) # ratio
+  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=.1/12)) # ratio
   max.drawdown.percent <- maxDrawdown(pr$Theoretical) * 100 # percent
   
-  return(list(theoretical.returns=pr$Theoretical,
-              component.returns=components,
-              ar=annual.percent,
-              cr=calmar.ratio,
-              sr=sortino.ratio,
-              mdp=max.drawdown.percent,
-              final.eq=final.eq,
-              rank.p=basket.rank.p,
-              title=study.title,
-              model.p=c(p1,p2,p3,p4)
-  ))
+  
+  scorecard.row$oos <- list(
+    r=pr$Theoretical,
+    c=pc,
+    component.returns=components,
+    cagr=annual.percent,
+    calmar=calmar.ratio,
+    sortino=sortino.ratio,
+    mdd=max.drawdown.percent,
+    rank=basket.rank,
+    rank.p=basket.rank.p,
+    plots=c(p1,p2,p3,p4,p5)
+  ) 
+  
+  return(scorecard.row)
 }
 
