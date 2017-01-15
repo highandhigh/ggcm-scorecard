@@ -1,0 +1,60 @@
+---
+title: "R Scorecard Users Guide"
+author: "Matt Barry"
+date: January 15, 2017
+output: 
+  pdf_document: 
+    number_sections: yes
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# R Scorecard User's Guide
+
+
+
+## Features
+
+- The actual representation uses Bivio transactions to compute realized performance.
+- The buy-hold representation is an equal-dollar-weight model of the basket, bought at the start of the out-of-sample period. 
+- The out-of-sample period runs the model update function since the stop of the backtest.  The expected performance representation refers to the in-sample period used in the backtest.  
+
+## Update Sequence
+
+The update sequence is meant to run once, per update period, to gather the latest time series prices and update the model performance details.  The update sequence starts with an empty scorecard then fills the fields as it produces results.  The sequence is as follows:
+
+1. Read the scorecard configuration file to identify models.
+1. Read the Bivio export file, which should have been updated to reflect recent transactions.  
+1. Gather and adjust the price history for each of the tickers in the set of model baskets.  This step requests the data from Yahoo! and only gathers once for each ticker regardless if a ticker appears in multiple baskets. 
+1. Compute buy-and-hold basket performance, once for each model basket, using a single equal-dollar-weight transaction at the operations transition date.  
+1. Compute actual model performance, once for each activated model, using Bivio transactions.  
+1. Compute out-of-sample model performance, once for each non-retired model, using model-driven transactions.  
+1. Save the results to an archive file for post-processing.  The results include scalar data such as final performance ratios, time series arrays such as returns, and comnpleted plots ready to display.  
+
+
+
+## Known Idiosyncracies
+
+- The scorecard's data ```live``` date identifies when we put the model into the **activated** group. The Bivio transactions may or may not appear on that date (likely they will appear later). The buy-hold shadow model uses the backtest stop date as the start date for the out-of-sample buy-hold shadow model.
+- Out-of-sample representations do not yet accommodate the backtested model's rebalancing periods.
+- Out-of-sample representations do not yet accommodate stops.  
+
+
+## Known Issues
+
+- The Bivio transactions do not identify which buy or sell transaction correponds to a particular model, as it would in the order form.  Consequently, model baskets with overlapping tickers will have spurious association of a trade or trades that may not belong.  There is no implemented correspondence of model signals with actual transactions.  Possible remedies are: (a) implement such a correspondence with model signals, but that falls short for combined trades or partial trade adjustment; (b) add an exclusion list to the scorecard, flagging transactions and dates that do not belong to a model; (c) create a transaction-to-model mapping as a historical record.  
+- The 3ROC models for out-of-sample do not account for the ```levels``` backtest parameter.  All levels are assumed to be 1.  
+
+## To-Do List
+
+- Create a hypothetical account with all active models assigned to portfolios within the account, using actual transactions (when attribution solved) to create account-level statistics and plots.
+
+
+Built with R version `r getRversion()`. 
+
+Copyright (c) 2017 Great Gray Capital Management LLP
+

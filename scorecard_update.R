@@ -1,27 +1,33 @@
 #' GGCM scorecard update.
 #' @description Scorecard from Bivio transactions, models, and blotter trade integration.
+#' Writes results to an archive so that presentation programs can read and render. 
 #' @author mrb, \email{mrb@greatgray.org}
 
 
-# TODO pass model config to model updater functions
-# TODO do an account with model portfoliow consolidated, active models
+# initialize environment variable names
+bivio.ev <- "BIVIO_FILE"
+scorecard.dir.ev <- "SCORECARD_DIR"
 
 # initialize blotter parameters
+data.start <- "2012-01-01"
 init.date <- "2016-08-01"
 switch.date <- "2016-08-05"
 init.eq <- 250000 # per model
 benchmark.symbol <- "SPY"
 
+
 ###### production algorithm
 Sys.setenv(TZ = "UTC")
 acct.name <- "ggcm"
 port.name <- "model"
+refresh <- today()
+
 
 ###### options for many functions
 options("stringsAsFactors" = FALSE)
 options("getSymbols.auto.assign" = FALSE)
 options("getSymbols.warning4.0" = FALSE)
-options("verbose"=FALSE)
+options("verbose"=TRUE)
 
 invisible(suppressPackageStartupMessages(
   lapply(
@@ -41,7 +47,8 @@ invisible(suppressPackageStartupMessages(
       "PerformanceAnalytics",
       "ggplot2",
       "directlabels",
-      "scales"
+      "scales",
+      "tools"
     ),
     library,
     warn.conflicts = FALSE,
@@ -57,6 +64,15 @@ invisible(suppressPackageStartupMessages(
 for ( nm in list.files("lib",pattern="[.][Rr]$")) {
   source(file.path("lib",nm))
 }
+
+
+# check output location now so we don't wait to discover it's missing
+# existence handles symbolic links, but does not check access
+scorecard.dir <- Sys.getenv(scorecard.dir.ev)
+if (str_length(scorecard.dir) < 1) {
+  stop(paste("Scorecard output directory missing: set",scorecard.dir.ev))
+}
+
 
 # 1. initialize scorecard framework
 scorecard <- yaml.load_file("scorecard.yaml")
@@ -88,11 +104,12 @@ scorecard$table$retired <- lapply(scorecard$table$retired,function(i){
 scorecard.tickers <- c() # filled later
 
 # 2. initialize transaction history
-bivio <- Sys.getenv("BIVIO_FILE") 
-if (!file.exists(bivio))
+bivio.file <- Sys.getenv(bivio.ev) 
+
+if (!file.exists(bivio.file))
   stop(paste("Cannot find Bivio export file", bivio))
 
-doc <- xmlParse(bivio)
+doc <- xmlParse(bivio.file)
 xmltop <- xmlRoot(doc)
 
 
@@ -251,7 +268,7 @@ benchmark.calmar.ratio <- as.numeric(CalmarRatio(benchmark.returns))
 benchmark.sortino.ratio <- as.numeric(SortinoRatio(benchmark.returns,MAR=0.1/12))
 benchmark.max.drawdown.percent <- maxDrawdown(benchmark.returns) * 100
 
-# compute buy-hold returns for each model
+# compute buy-hold returns for each model, including retired
 scorecard.table <- lapply(scorecard.table,function(scorecard.row) {
   scorecard.row$model <- NA
   model.name <- scorecard.row$id
@@ -636,7 +653,7 @@ backtestStops <- sapply(scorecard.table,function(sr){
   return(rv)
 })
 
-oosStartDate <- min(backtestStops,na.rm=TRUE)
+oosStartDate <- min(c(backtestStops,data.start),na.rm=TRUE)
 
 # re-query the tickers including benchmark
 for ( ticker in c(scorecard.tickers,benchmark.symbol) ) {
@@ -662,22 +679,24 @@ for ( ticker in scorecard.tickers) {
   assign(ticker,get(ticker),envir=scorecard.history)
 }
 
-# now run the models with data already acquired
-# these should trim their use of the time series to actual OOS start date
+# now run the non-retired models with data already acquired
+# these will trim individual use of the time series to actual OOS start date
 scorecard.table <- lapply(scorecard.table,function(scorecard.row) {
   model.name <- scorecard.row$id
   rv <- scorecard.row
-  if ( length(scorecard.row$model) > 1 ) {
-    f <- scorecard.row$model$config[['function']]
-    if ( ! is.null(f) ) {
-      if ( str_length(f) > 0 ) {
-        if ( getOption("verbose"))
-          message(paste("Processing out-of-sample results for",model.name))
-        updateModel <- match.fun(f) # may throw an error, untrapped here
-        for ( ticker in scorecard.tickers ) {
-          assign(ticker,get(ticker,envir=scorecard.history),envir=.GlobalEnv)
+  if ( scorecard.row$status != "retired") {
+    if ( length(scorecard.row$model) > 1 ) {
+      f <- scorecard.row$model$config[['function']]
+      if ( ! is.null(f) ) {
+        if ( str_length(f) > 0 ) {
+          if ( getOption("verbose"))
+            message(paste("Processing out-of-sample results for",model.name))
+          updateModel <- match.fun(f) # may throw an error, untrapped here
+          for ( ticker in scorecard.tickers ) {
+            assign(ticker,get(ticker,envir=scorecard.history),envir=.GlobalEnv)
+          }
+          rv <- updateModel(scorecard.row)
         }
-        rv <- updateModel(scorecard.row)
       }
     }
   }
@@ -685,110 +704,24 @@ scorecard.table <- lapply(scorecard.table,function(scorecard.row) {
   return(rv)
 })
 
-
-##########
-# results done, build the scorecard
-# TODO extract listed data
-
-# creates a portion of the scorecard from the definition and model files
-insert.scorecard <- function(scg, group_name = "NA") {
-  refresh <- today()
-  scorecard.rv <- data.frame()
-  for (id in scg) {
-    if (id$id != "NA") {
-      mc <- yaml.load_file(file.path("models",id$config))
-      df <- data.frame(
-        Status = group_name,
-        ModelID = id$id,
-        Owner = id$partner,
-        Exp.OOS = mc$backtest$stop,
-        Exp.CAGR = mc$backtest$cagr,
-        Exp.MDD = mc$backtest$mdd,
-        Exp.Sortino = mc$backtest$sortino,
-        Exp.Calmar = mc$backtest$calmar,
-        Data.Live = ifelse(is.null(id$live), mc$backtest$stop, id$live),
-        Data.Refresh = refresh,
-        Actual.CAGR = NA,
-        Actual.MDD = NA,
-        Actual.Sortino = NA,
-        Actual.Calmar = NA,
-        BuyHold.CAGR = NA,
-        BuyHold.MDD = NA,
-        BuyHold.Sortino = NA,
-        BuyHold.Calmar = NA,
-        Benchmark.CAGR = NA,
-        Benchmark.MDD = NA,
-        Benchmark.Sortino = NA,
-        Benchmark.Calmar = NA,
-        Location = file.path("models",id$config)
-      )
-      scorecard.rv <- bind_rows(scorecard.rv, df)
-    }
-  }
-  return(scorecard.rv)
+########
+# Content completed, ready to process scorecard output
+# Save workspace for reference, audting, debugging
+if ( getOption("verbose"))
+  message("Saving workspace...")
+if ( ! dir.exists(scorecard.dir) ) {
+  dir.create(scorecard.dir,showWarnings=getOption("verbose"),recursive=TRUE)
+  warning(paste("Scorecard output directory created:",scorecard.dir))
 }
+image.date <- format(today("America/Chicago"),"%Y%m%d")
+image.file <- file.path(scorecard.dir,paste0(image.date,"_","scorecard","_","workspace",".RData"))
+save.image(file=image.file) # writes workspace by default
+if (getOption("verbose"))
+  message(paste0("Saved workspace to",image.file))
 
+#######
+# All done preparing data, reduce and produce elsewhere
+if (getOption("verbose"))
+  message("Scorecard data preparation complete")
 
-scorecard.df <- data.frame()
-#scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.activated, "Activated"))
-#scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.candidate, "Candidate"))
-#scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.deactivated, "Deactivated"))
-#scorecard.out <- bind_rows(scorecard.out,insert.scorecard(scorecard.retired, "Retired"))
-rownames(scorecard.df) <- scorecard.df$ModelID
-
-
-# scorecard rankings for activated and candidate
-actual.rank <- scorecard.df %>%
-  dplyr::filter(Status %in% c('Activated', 'Candidate')) %>%
-  mutate(CAGR.R = dense_rank(desc(Actual.CAGR))) %>%
-  mutate(MDD.R = dense_rank(Actual.MDD)) %>%
-  mutate(Calmar.R = dense_rank(desc(Actual.Calmar))) %>%
-  mutate(Sortino.R = dense_rank(desc(Actual.Sortino))) %>%
-  select(ModelID, CAGR.R, MDD.R, Calmar.R, Sortino.R)
-rownames(actual.rank) <- actual.rank$ModelID
-scorecard.ranked <-
-  left_join(scorecard.df, actual.rank, by = 'ModelID')
-scorecard.ranked[is.na(scorecard.ranked)] <- ''
-
-formatted.scorecard <- formattable(scorecard.ranked,
-                                   list(
-                                     ModelID = formatter("span", 
-                                                         style = x ~ style(background = "lightgray",
-                                                                           color = "black")),
-                                     Status = formatter("span", style = x ~ ifelse(
-                                       x == "Activated",
-                                       style(
-                                         background = "green",
-                                         color = "white",
-                                         font.weight = "bold"
-                                       ),
-                                       ifelse(
-                                         x == "Candidate",
-                                         style(
-                                           background = "yellow",
-                                           color = "black",
-                                           font.weight = "bold"
-                                         ),
-                                         ifelse(
-                                           x == "Deactivated",
-                                           style(
-                                             background = "red",
-                                             color = "white",
-                                             font.weight = "bold"
-                                           ),
-                                           style(
-                                             background = "blue",
-                                             color = "white",
-                                             font.weight = "bold"
-                                           )
-                                         )
-                                       )
-                                     ))
-                                   ))
-formatted.scorecard
-
-
-# combined active model and buy-hold cumulative return
-#xr <- merge(benchmark.returns, bhp$BuyHold, pm$Actual)
-#p <- ggChartsPerformanceSummary2(xr,ptitle = paste(model.name, "vs.", "Buy-Hold Basket"))
 

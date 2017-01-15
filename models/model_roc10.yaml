@@ -1,12 +1,12 @@
 # 3ROC model config
-model: "3ROC13"
+model: "3ROC10"
 version: "0.1"
 config:
-  periods: [1,2,3]
-  weights: [0.4,0.3,0.3]
+  periods: [3,6,11]
+  weights: [0.6,0.3,0.1]
   rebalance: months
   trailstop: 0.0
-  topn: 3
+  topn: 4
   basket: [XLY, XLP, XLE, XLK, XLU, XLF, AGG, TLT, GLD]
   function: model_update_rm_3roc
 backtest:
@@ -15,7 +15,7 @@ backtest:
   initeq: 1000000
   transaction: -4.95
   benchmark: SPY
-  cagr: 17.8
-  mdd: 29.5
+  cagr: 12.2
+  mdd: 17.7
   sortino: 0.0 # unknown
   calmar: 0.0 # unknown

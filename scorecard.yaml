@@ -1,8 +1,8 @@
 version: 0.1
-vintage: "2016-12-01"
+vintage: "2017-01-14"
 
 table:
-  activated:
+  activated: # id, partner, config, buy-hold, active, does OOS update, with rankings
   - id: "3ROC 13"
     partner: "MRB"
     config: "model_roc13.yaml"
@@ -11,12 +11,17 @@ table:
     partner: "STN"
     config: "model_rso20.yaml"
     live: "2016-09-14"
-  candidate: # id, partner, config, not live; does OOS update as active, with ranking
-  - id: "3ROC 32" 
-    partner: "TBD"
-    config: "model_roc32.yaml"
-  deactivated: # would have id, partner, config, not live; does OOS update as active, without ranking
-  - id: NA
-  retired: # would have id, no partner, config, not live; does OOS update as active, without ranking
+  candidate: # id, partner, config, buy-hold, not active; does OOS update, with rankings
+  - id: "3ROC 04" 
+    partner: "MRB"
+    config: "model_roc04.yaml"
+  - id: "3ROC 10"
+    partner: "MRB"
+    config: "model_roc10.yaml"
+  deactivated: # would have id, partner, config, buy-hold, not active; does OOS update, without ranking
+  - id: "3ROC 02"
+    partner: "MRB"
+    config: "model_roc02.yaml"
+  retired: # would have id, no partner, config, by-hold, not active; no OOS update, without ranking
   - id: NA
   

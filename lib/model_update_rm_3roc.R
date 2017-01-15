@@ -7,7 +7,7 @@
 #' @description Run and report update for fixed model configuration
 #' 
 
-model_update_rm13_roc <- function(scorecard.row) {
+model_update_rm_3roc <- function(scorecard.row) {
   
   model <- scorecard.row$model
   study.title <- model$model
@@ -23,11 +23,11 @@ model_update_rm13_roc <- function(scorecard.row) {
   basket <- model$config$basket
   
   # trim basket to enact date
-  for ( ticker in basket ) {
-    dx <- get(ticker,envir=.GlobalEnv)
-    dx <- dx[paste0(enact.date,'::',stop.date),]
-    assign(ticker,dx,envir=.GlobalEnv)
-  }
+  #for ( ticker in basket ) {
+  #  dx <- get(ticker,envir=.GlobalEnv)
+  #  dx <- dx[paste0(enact.date,'::',stop.date),]
+  #  assign(ticker,dx,envir=.GlobalEnv)
+  #}
   
   # create an xts object of daily adjusted close prices
   basket.close.monthly <- monthlyPrices(basket)
@@ -79,7 +79,8 @@ model_update_rm13_roc <- function(scorecard.row) {
     prices <- cbind(prices,Cl(get(symbol)))
   colnames(prices) <- basket
   returns <- diff(log(prices))[-1, ]
-  components <- returns[paste0(enact.date,"::"),]
+  returns <- returns[paste0(enact.date,'::')]
+  components <- returns
   #basket.comp.p <- ggChartsPerformanceSummary2(components,
   #                                ptitle="RM13 3ROC Basket Component Performance")
   #basket.comp.p
