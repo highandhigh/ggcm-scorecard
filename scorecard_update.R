@@ -3,10 +3,7 @@
 #' Writes results to an archive so that presentation programs can read and render. 
 #' @author mrb, \email{mrb@greatgray.org}
 
-
-# initialize environment variable names
-bivio.ev <- "BIVIO_FILE"
-scorecard.dir.ev <- "SCORECARD_DIR"
+source("scorecard_setup.R")
 
 # initialize blotter parameters
 data.start <- "2012-01-01"
@@ -16,54 +13,12 @@ init.eq <- 250000 # per model
 benchmark.symbol <- "SPY"
 
 
-###### production algorithm
+# production algorithm
 Sys.setenv(TZ = "UTC")
 acct.name <- "ggcm"
 port.name <- "model"
 refresh <- today()
 
-
-###### options for many functions
-options("stringsAsFactors" = FALSE)
-options("getSymbols.auto.assign" = FALSE)
-options("getSymbols.warning4.0" = FALSE)
-options("verbose"=TRUE)
-
-invisible(suppressPackageStartupMessages(
-  lapply(
-    c(
-      "XML",
-      "yaml",
-      "zoo",
-      "timeSeries",
-      "quantmod",
-      "tidyr",
-      "dplyr",
-      "magrittr",
-      "blotter",
-      "lubridate",
-      "formattable",
-      "stringr",
-      "PerformanceAnalytics",
-      "ggplot2",
-      "directlabels",
-      "scales",
-      "tools"
-    ),
-    library,
-    warn.conflicts = FALSE,
-    character.only = TRUE,
-    verbose = getOption("verbose")
-  )
-))
-
-
-
-# load everything in lib directory
-# should include the model out-of-sample update functions
-for ( nm in list.files("lib",pattern="[.][Rr]$")) {
-  source(file.path("lib",nm))
-}
 
 
 # check output location now so we don't wait to discover it's missing
@@ -105,7 +60,6 @@ scorecard.tickers <- c() # filled later
 
 # 2. initialize transaction history
 bivio.file <- Sys.getenv(bivio.ev) 
-
 if (!file.exists(bivio.file))
   stop(paste("Cannot find Bivio export file", bivio))
 
@@ -265,7 +219,7 @@ colnames(benchmark.returns) <- "Benchmark"
 benchmark.cumulatives <- cumprod(1 + benchmark.returns)
 benchmark.annual.percent <- as.numeric(Return.annualized(benchmark.returns)) * 100
 benchmark.calmar.ratio <- as.numeric(CalmarRatio(benchmark.returns))
-benchmark.sortino.ratio <- as.numeric(SortinoRatio(benchmark.returns,MAR=0.1/12))
+benchmark.sortino.ratio <- as.numeric(SortinoRatio(benchmark.returns,MAR=0))
 benchmark.max.drawdown.percent <- maxDrawdown(benchmark.returns) * 100
 
 # compute buy-hold returns for each model, including retired
@@ -356,7 +310,7 @@ scorecard.table <- lapply(scorecard.table,function(scorecard.row) {
     
     bh.annual.percent <- as.numeric(Return.annualized(bhp$BuyHold)) * 100 # percent
     bh.calmar.ratio <- as.numeric(CalmarRatio(bhp$BuyHold)) # ratio
-    bh.sortino.ratio <- as.numeric(SortinoRatio(bhp$BuyHold, MAR = 0.1 / 12)) # ratio
+    bh.sortino.ratio <- as.numeric(SortinoRatio(bhp$BuyHold,MAR=0)) # ratio
     bh.max.drawdown.percent <- maxDrawdown(bhp$BuyHold) * 100 # percent
     
     # store in scorecard

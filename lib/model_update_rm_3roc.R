@@ -55,8 +55,8 @@ model_update_rm_3roc <- function(scorecard.row) {
   # last six months ranking by component
   df <- tail(sym.rank, n=6)
   colnames(df) <- gsub(".Rank","",colnames(sym.rank))
-  textplot( df )
-  title("Basket Component Ranking")
+  #textplot( df )
+  #title("Basket Component Ranking")
   
   # last 24 months ranking plot  
   sym.rank.df <- as.data.frame(sym.rank)
@@ -182,7 +182,7 @@ model_update_rm_3roc <- function(scorecard.row) {
 
   annual.percent <- as.numeric(Return.annualized(pr$Theoretical)) * 100 # percent
   calmar.ratio <- as.numeric(CalmarRatio(pr$Theoretical)) # ratio
-  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=.1/12)) # ratio
+  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=0)) # ratio
   max.drawdown.percent <- maxDrawdown(pr$Theoretical) * 100 # percent
   
   scorecard.row$oos <- list(

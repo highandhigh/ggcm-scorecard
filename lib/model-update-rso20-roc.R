@@ -250,7 +250,7 @@ model_update_rso20_roc <- function(scorecard.row) {
   
   annual.percent <- as.numeric(Return.annualized(pr$Theoretical)) * 100 # percent
   calmar.ratio <- as.numeric(CalmarRatio(pr$Theoretical)) # ratio
-  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=.1/12)) # ratio
+  sortino.ratio <- as.numeric(SortinoRatio(pr$Theoretical,MAR=0)) # ratio
   max.drawdown.percent <- maxDrawdown(pr$Theoretical) * 100 # percent
   
   

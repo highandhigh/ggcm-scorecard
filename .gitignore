@@ -3,5 +3,6 @@
 .RData
 clubexp.xml
 README.html
+gtable.R
 *.pdf
 *~
